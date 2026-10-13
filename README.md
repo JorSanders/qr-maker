@@ -25,6 +25,7 @@ Download as SVG, PNG or WebP.
 - `src/pixel.js`, `src/presets.js`, `src/image.js`, `src/main.js`: pixel font and
   stamping, payload formats, image loading and the UI.
 - `vendor/jsQR.js`: the only dependency, vendored as-is (Apache 2.0).
+- `fonts/`: Montserrat (SIL Open Font License), shared with [jor.dev](https://jor.dev).
 
 ## Run
 
