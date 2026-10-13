@@ -1,5 +1,5 @@
 import type { LoadedImage } from './image';
-import { alignmentCenters, buildMatrix, isFinderZone, type Matrix } from './qr';
+import { alignmentCenters, buildMatrix, decodeMatrix, isFinderZone, type Matrix } from './qr';
 
 export type Mode = 'minimal' | 'logo' | 'pixel' | 'art';
 
@@ -21,10 +21,15 @@ export interface Rendered {
 }
 
 const QUIET = 4;
-export const MAX_LOGO_AREA = 0.2;
+export const MAX_LOGO_AREA = 0.16;
+const LOGO_VERSION_SPAN = 10;
 
 export function renderQr(options: Options, prebuilt?: Matrix): Rendered {
-  const matrix = prebuilt ?? buildMatrix(options.text, options.mode === 'minimal' ? 'L' : 'H');
+  const matrix =
+    prebuilt ??
+    (options.mode === 'logo'
+      ? logoMatrix(options)
+      : buildMatrix(options.text, options.mode === 'minimal' ? 'L' : 'H'));
   const body = {
     minimal: (m: Matrix, o: Options) => (o.dots ? renderDots(m, o) : renderMinimal(m, o)),
     logo: renderLogo,
@@ -65,45 +70,65 @@ function renderMinimal(matrix: Matrix, { fg }: Options): string {
   return `<path d="${runs(matrix)}" fill="${fg}" shape-rendering="crispEdges"/>`;
 }
 
-export interface LogoBox {
-  w: number;
-  h: number;
+interface Rect {
   x: number;
   y: number;
+  w: number;
+  h: number;
 }
 
+export interface LogoBox {
+  image: Rect;
+  clear: Rect;
+}
+
+const LOGO_PAD = 0.5;
+
 export function logoBox(size: number, fraction: number, aspect: number): LogoBox {
-  let w = Math.round(fraction * size);
-  let h = Math.round(w / aspect);
+  let w = fraction * size;
+  let h = w / aspect;
   const maxArea = MAX_LOGO_AREA * size * size;
   if (w * h > maxArea) {
     const k = Math.sqrt(maxArea / (w * h));
-    w = Math.floor(w * k);
-    h = Math.floor(h * k);
+    w *= k;
+    h *= k;
   }
-  const fit = (n: number) => {
-    let v = Math.max(3, n);
-    if ((v - size) % 2 !== 0) v = v - 1 >= 3 ? v - 1 : v + 1;
-    return v;
-  };
-  w = fit(w);
-  h = fit(h);
-  return { w, h, x: (size - w) / 2, y: (size - h) / 2 };
+  const image = { x: (size - w) / 2, y: (size - h) / 2, w, h };
+  const x0 = Math.max(0, Math.floor(image.x - LOGO_PAD));
+  const y0 = Math.max(0, Math.floor(image.y - LOGO_PAD));
+  const x1 = Math.min(size, Math.ceil(image.x + w + LOGO_PAD));
+  const y1 = Math.min(size, Math.ceil(image.y + h + LOGO_PAD));
+  return { image, clear: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
 }
 
-function renderLogo(matrix: Matrix, { fg, bg, logo, logoSize }: Options): string {
-  const aspect = logo ? logo.width / logo.height : 1;
-  const box = logoBox(matrix.size, logoSize, aspect);
+function logoAspect({ logo }: Options): number {
+  return logo ? logo.width / logo.height : 1;
+}
+
+function logoMatrix(options: Options): Matrix {
+  const first = buildMatrix(options.text, 'H');
+  for (let v = first.version; v <= Math.min(40, first.version + LOGO_VERSION_SPAN); v++) {
+    const matrix = v === first.version ? first : buildMatrix(options.text, 'H', v);
+    const { clear } = logoBox(matrix.size, options.logoSize, logoAspect(options));
+    const cells = matrix.cells.slice();
+    for (let row = clear.y; row < clear.y + clear.h; row++) cells.fill(0, row * matrix.size + clear.x, row * matrix.size + clear.x + clear.w);
+    if (decodeMatrix({ ...matrix, cells }) === options.text) return matrix;
+  }
+  return first;
+}
+
+function renderLogo(matrix: Matrix, options: Options): string {
+  const { fg, bg, logo, logoSize } = options;
+  const { image, clear } = logoBox(matrix.size, logoSize, logoAspect(options));
   const inBox = (row: number, col: number) =>
-    row >= box.y && row < box.y + box.h && col >= box.x && col < box.x + box.w;
+    row >= clear.y && row < clear.y + clear.h && col >= clear.x && col < clear.x + clear.w;
   let out = `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;
   if (logo) {
-    const pad = 0.5;
     out +=
-      `<image href="${logo.url}" x="${box.x + pad}" y="${box.y + pad}" ` +
-      `width="${box.w - pad * 2}" height="${box.h - pad * 2}" preserveAspectRatio="xMidYMid meet"/>`;
+      `<image href="${logo.url}" x="${image.x}" y="${image.y}" ` +
+      `width="${image.w}" height="${image.h}" preserveAspectRatio="xMidYMid meet"/>`;
   } else {
-    out += `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="${bg}"/>`;
+    out += `<rect x="${image.x}" y="${image.y}" width="${image.w}" height="${image.h}" fill="${bg}"/>`;
   }
   return out;
 }

@@ -16,8 +16,8 @@ export function matrixFromCells(cells: Uint8Array, version: number, ecc: Ecc): M
   return { size, version, ecc, cells, isDark: (row, col) => cells[row * size + col] === 1 };
 }
 
-export function buildMatrix(text: string, ecc: Ecc): Matrix {
-  const qr = qrcode(0, ecc);
+export function buildMatrix(text: string, ecc: Ecc, version = 0): Matrix {
+  const qr = qrcode(version as Parameters<typeof qrcode>[0], ecc);
   qr.addData(text, 'Byte');
   qr.make();
   const size = qr.getModuleCount();
