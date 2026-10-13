@@ -1,14 +1,14 @@
 import type { LoadedImage } from './image';
-import { alignmentCenters, buildMatrix, isFinderZone, type Ecc, type Matrix } from './qr';
+import { alignmentCenters, buildMatrix, isFinderZone, type Matrix } from './qr';
 
-export type Mode = 'minimal' | 'logo' | 'art' | 'dots' | 'pixel';
+export type Mode = 'minimal' | 'logo' | 'pixel' | 'art';
 
 export interface Options {
   text: string;
   mode: Mode;
   fg: string;
   bg: string;
-  ecc: Ecc;
+  dots: boolean;
   logo: LoadedImage | null;
   logoSize: number;
   art: string | null;
@@ -24,13 +24,11 @@ const QUIET = 4;
 export const MAX_LOGO_AREA = 0.2;
 
 export function renderQr(options: Options, prebuilt?: Matrix): Rendered {
-  const ecc: Ecc = options.mode === 'logo' || options.mode === 'art' ? 'H' : options.ecc;
-  const matrix = prebuilt ?? buildMatrix(options.text, ecc);
+  const matrix = prebuilt ?? buildMatrix(options.text, options.mode === 'minimal' ? 'L' : 'H');
   const body = {
-    minimal: renderMinimal,
+    minimal: (m: Matrix, o: Options) => (o.dots ? renderDots(m, o) : renderMinimal(m, o)),
     logo: renderLogo,
     art: renderArt,
-    dots: renderDots,
     pixel: renderMinimal,
   }[options.mode](matrix, options);
   return { svg: wrap(matrix.size, options.bg, body), matrix };

@@ -3,14 +3,13 @@ import './style.css';
 import { loadImage, type LoadedImage } from './image';
 import { DARK, LIGHT, NONE, isLocked, pixelMinVersion, solvePixel, stampText } from './pixel';
 import { compose, type Fields, type Kind } from './presets';
-import type { Ecc, Matrix } from './qr';
+import type { Matrix } from './qr';
 import { renderQr, svgToCanvas, type Mode, type Options, type Rendered } from './render';
 
 const HINTS: Record<Mode, string> = {
-  minimal: 'Fewest possible squares: lowest version that fits, plain square modules.',
+  minimal: 'Fewest possible squares: lowest version that fits, level L error correction.',
   logo: 'Uses level H error correction and clears a box in the middle for your logo.',
-  art: 'Dots over your image. Function patterns stay solid so it keeps scanning.',
-  dots: 'Round dots and softly rounded corner eyes.',
+  art: 'Dots over your picture. Function patterns stay solid so it keeps scanning.',
   pixel:
     'Paint on the code. Free padding bits are set to your drawing and error correction covers the rest. Greyed cells are fixed by the standard.',
 };
@@ -21,7 +20,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 const kind = $<HTMLSelectElement>('kind');
 const payload = $<HTMLPreElement>('payload');
-const ecc = $<HTMLSelectElement>('ecc');
+const dots = $<HTMLInputElement>('dots');
 const fg = $<HTMLInputElement>('fg');
 const bg = $<HTMLInputElement>('bg');
 const logoSize = $<HTMLInputElement>('logo-size');
@@ -79,7 +78,7 @@ function readOptions(): Options {
     mode: checked('mode') as Mode,
     fg: fg.value,
     bg: bg.value,
-    ecc: ecc.value as Ecc,
+    dots: dots.checked,
     logo,
     logoSize: Number(logoSize.value),
     art,
@@ -289,11 +288,21 @@ $('dl-svg').addEventListener('click', () => {
   if (current) download('qr.svg', new Blob([current.svg], { type: 'image/svg+xml' }));
 });
 
-$('dl-png').addEventListener('click', async () => {
+async function downloadRaster(type: string, extension: string) {
   if (!current) return;
   const canvas = await svgToCanvas(current.svg, Math.ceil(1200 / (current.matrix.size + 8)));
-  canvas.toBlob((blob) => blob && download('qr.png', blob), 'image/png');
-});
+  canvas.toBlob((blob) => {
+    if (!blob || blob.type !== type) {
+      badge.textContent = `This browser cannot export ${extension.toUpperCase()}`;
+      badge.dataset.state = 'fail';
+      return;
+    }
+    download(`qr.${extension}`, blob);
+  }, type);
+}
+
+$('dl-png').addEventListener('click', () => downloadRaster('image/png', 'png'));
+$('dl-webp').addEventListener('click', () => downloadRaster('image/webp', 'webp'));
 
 $<HTMLInputElement>('logo').addEventListener('change', async (event) => {
   const file = (event.target as HTMLInputElement).files?.[0];
