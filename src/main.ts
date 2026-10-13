@@ -177,6 +177,24 @@ function show(rendered: Rendered | null, message: string) {
   badge.dataset.state = '';
 }
 
+function fileName(extension: string): string {
+  const k = kind.value as Kind;
+  const fields = readFields(k);
+  const label =
+    k === 'wifi' ? `wifi-${fields.ssid}` :
+    k === 'email' ? `email-${fields.address}` :
+    k === 'sms' ? `sms-${fields.number}` :
+    k === 'vcard' ? `vcard-${fields.first}-${fields.last}` :
+    fields.text.replace(/^[a-z]+:\/\//i, '');
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+    .replace(/-+$/, '');
+  return `qr-${slug || 'code'}-${checked('mode')}.${extension}`;
+}
+
 function download(name: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -187,7 +205,7 @@ function download(name: string, blob: Blob) {
 }
 
 $('dl-svg').addEventListener('click', () => {
-  if (current) download('qr.svg', new Blob([current.svg], { type: 'image/svg+xml' }));
+  if (current) download(fileName('svg'), new Blob([current.svg], { type: 'image/svg+xml' }));
 });
 
 async function downloadRaster(type: string, extension: string) {
@@ -199,7 +217,7 @@ async function downloadRaster(type: string, extension: string) {
       badge.dataset.state = 'fail';
       return;
     }
-    download(`qr.${extension}`, blob);
+    download(fileName(extension), blob);
   }, type);
 }
 
