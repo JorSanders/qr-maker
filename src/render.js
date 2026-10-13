@@ -1,63 +1,31 @@
-import type { LoadedImage } from './image';
-import { alignmentCenters, buildMatrix, decodeMatrix, isFinderZone, type Matrix } from './qr';
-
-export type Mode = 'minimal' | 'logo' | 'pixel' | 'art';
-export type LogoFit = 'small' | 'big';
-
-export interface Options {
-  text: string;
-  mode: Mode;
-  fg: string;
-  bg: string;
-  dots: boolean;
-  logo: LoadedImage | null;
-  logoFit: LogoFit;
-  art: string | null;
-  artDot: number;
-}
-
-export interface Rendered {
-  svg: string;
-  matrix: Matrix;
-  note?: string;
-}
-
+import { alignmentCenters, buildMatrix, decodeMatrix, isFinderZone } from "./qr.js";
 const QUIET = 4;
 const LOGO_MIN_FRACTION = 0.1;
 const LOGO_MAX_FRACTION = 0.6;
 const LOGO_MARGIN = 0.02;
-
-export function renderQr(options: Options, prebuilt?: Matrix): Rendered {
-  let note: string | undefined;
+function renderQr(options, prebuilt) {
+  let note;
   let matrix = prebuilt;
-  if (!matrix && options.mode === 'logo') {
+  if (!matrix && options.mode === "logo") {
     const plan = logoPlan(options);
-    matrix = buildMatrix(options.text, 'H', plan.version);
+    matrix = buildMatrix(options.text, "H", plan.version);
     note = `logo ${Math.round(plan.fraction * 100)}% wide`;
   }
-  matrix ??= buildMatrix(options.text, options.mode === 'minimal' ? 'L' : 'H');
+  matrix ??= buildMatrix(options.text, options.mode === "minimal" ? "L" : "H");
   const body = {
-    minimal: (m: Matrix, o: Options) => (o.dots ? renderDots(m, o) : renderMinimal(m, o)),
+    minimal: (m, o) => o.dots ? renderDots(m, o) : renderMinimal(m, o),
     logo: renderLogo,
     art: renderArt,
-    pixel: renderMinimal,
+    pixel: renderMinimal
   }[options.mode](matrix, options);
   return { svg: wrap(matrix.size, options.bg, body), matrix, note };
 }
-
-function wrap(size: number, bg: string, body: string): string {
+function wrap(size, bg, body) {
   const total = size + QUIET * 2;
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-QUIET} ${-QUIET} ${total} ${total}" ` +
-    `width="${total * 10}" height="${total * 10}">` +
-    `<rect x="${-QUIET}" y="${-QUIET}" width="${total}" height="${total}" fill="${bg}"/>` +
-    body +
-    `</svg>`
-  );
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-QUIET} ${-QUIET} ${total} ${total}" width="${total * 10}" height="${total * 10}"><rect x="${-QUIET}" y="${-QUIET}" width="${total}" height="${total}" fill="${bg}"/>` + body + `</svg>`;
 }
-
-function runs(matrix: Matrix, skip: (row: number, col: number) => boolean = () => false): string {
-  let d = '';
+function runs(matrix, skip = () => false) {
+  let d = "";
   for (let row = 0; row < matrix.size; row++) {
     let start = -1;
     for (let col = 0; col <= matrix.size; col++) {
@@ -71,26 +39,11 @@ function runs(matrix: Matrix, skip: (row: number, col: number) => boolean = () =
   }
   return d;
 }
-
-function renderMinimal(matrix: Matrix, { fg }: Options): string {
+function renderMinimal(matrix, { fg }) {
   return `<path d="${runs(matrix)}" fill="${fg}" shape-rendering="crispEdges"/>`;
 }
-
-interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-interface LogoBox {
-  image: Rect;
-  clear: Rect;
-}
-
 const LOGO_PAD = 0.5;
-
-function logoBox(size: number, fraction: number, aspect: number): LogoBox {
+function logoBox(size, fraction, aspect) {
   const w = fraction * size;
   const h = w / aspect;
   const image = { x: (size - w) / 2, y: (size - h) / 2, w, h };
@@ -100,19 +53,11 @@ function logoBox(size: number, fraction: number, aspect: number): LogoBox {
   const y1 = Math.min(size, Math.ceil(image.y + h + LOGO_PAD));
   return { image, clear: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
 }
-
-function logoAspect({ logo }: Options): number {
+function logoAspect({ logo }) {
   return logo ? logo.width / logo.height : 1;
 }
-
-interface LogoPlan {
-  version: number;
-  fraction: number;
-}
-
-const logoPlans = new Map<string, LogoPlan[]>();
-
-function decodesWithLogo(matrix: Matrix, text: string, fraction: number, aspect: number): boolean {
+const logoPlans = /* @__PURE__ */ new Map();
+function decodesWithLogo(matrix, text, fraction, aspect) {
   const { clear } = logoBox(matrix.size, fraction, aspect);
   const cells = matrix.cells.slice();
   for (let row = clear.y; row < clear.y + clear.h; row++) {
@@ -120,76 +65,61 @@ function decodesWithLogo(matrix: Matrix, text: string, fraction: number, aspect:
   }
   return decodeMatrix({ ...matrix, cells }) === text;
 }
-
-function widestLogo(matrix: Matrix, text: string, aspect: number): number {
+function widestLogo(matrix, text, aspect) {
   if (!decodesWithLogo(matrix, text, LOGO_MIN_FRACTION, aspect)) return 0;
   let lo = LOGO_MIN_FRACTION;
   let hi = LOGO_MAX_FRACTION;
-  while (hi - lo > 0.005) {
+  while (hi - lo > 5e-3) {
     const mid = (lo + hi) / 2;
     if (decodesWithLogo(matrix, text, mid, aspect)) lo = mid;
     else hi = mid;
   }
   return Math.max(0, Math.floor((lo - LOGO_MARGIN) * 100) / 100);
 }
-
-function logoPlan(options: Options): LogoPlan {
+function logoPlan(options) {
   const aspect = logoAspect(options);
   const key = `${aspect.toFixed(4)}|${options.text}`;
   let plans = logoPlans.get(key);
   if (!plans) {
-    const first = buildMatrix(options.text, 'H');
+    const first = buildMatrix(options.text, "H");
     plans = [];
-    plans = [first, buildMatrix(options.text, 'H', first.version + 1)].map((matrix) => ({
+    plans = [first, buildMatrix(options.text, "H", first.version + 1)].map((matrix) => ({
       version: matrix.version,
-      fraction: widestLogo(matrix, options.text, aspect),
+      fraction: widestLogo(matrix, options.text, aspect)
     }));
     logoPlans.set(key, plans);
   }
-  if (options.logoFit === 'small' || plans[1].fraction <= plans[0].fraction) return plans[0];
+  if (options.logoFit === "small" || plans[1].fraction <= plans[0].fraction) return plans[0];
   return plans[1];
 }
-
-function renderLogo(matrix: Matrix, options: Options): string {
+function renderLogo(matrix, options) {
   const { fg, bg, logo } = options;
   const { image, clear } = logoBox(matrix.size, logoPlan(options).fraction, logoAspect(options));
-  const inBox = (row: number, col: number) =>
-    row >= clear.y && row < clear.y + clear.h && col >= clear.x && col < clear.x + clear.w;
+  const inBox = (row, col) => row >= clear.y && row < clear.y + clear.h && col >= clear.x && col < clear.x + clear.w;
   let out = `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;
   if (logo) {
-    out +=
-      `<image href="${logo.url}" x="${image.x}" y="${image.y}" ` +
-      `width="${image.w}" height="${image.h}" preserveAspectRatio="xMidYMid meet"/>`;
+    out += `<image href="${logo.url}" x="${image.x}" y="${image.y}" width="${image.w}" height="${image.h}" preserveAspectRatio="xMidYMid meet"/>`;
   } else {
     out += `<rect x="${image.x}" y="${image.y}" width="${image.w}" height="${image.h}" fill="${bg}"/>`;
   }
   return out;
 }
-
-function renderDots(matrix: Matrix, { fg }: Options): string {
+function renderDots(matrix, { fg }) {
   const { size } = matrix;
-  let dots = '';
+  let dots = "";
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
       if (isFinderZone(row, col, size, 7) || !matrix.isDark(row, col)) continue;
       dots += `M${col + 0.5} ${row}a0.5 0.5 0 1 1 0 1a0.5 0.5 0 1 1 0 -1z`;
     }
   }
-  const eye = (x: number, y: number) =>
-    `<rect x="${x + 0.5}" y="${y + 0.5}" width="6" height="6" rx="0.5" fill="none" stroke="${fg}" stroke-width="1"/>` +
-    `<rect x="${x + 2}" y="${y + 2}" width="3" height="3" rx="0.4" fill="${fg}"/>`;
-  return (
-    `<path d="${dots}" fill="${fg}"/>` +
-    eye(0, 0) +
-    eye(size - 7, 0) +
-    eye(0, size - 7)
-  );
+  const eye = (x, y) => `<rect x="${x + 0.5}" y="${y + 0.5}" width="6" height="6" rx="0.5" fill="none" stroke="${fg}" stroke-width="1"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3" rx="0.4" fill="${fg}"/>`;
+  return `<path d="${dots}" fill="${fg}"/>` + eye(0, 0) + eye(size - 7, 0) + eye(0, size - 7);
 }
-
-function renderArt(matrix: Matrix, { fg, bg, art, artDot }: Options): string {
+function renderArt(matrix, { fg, bg, art, artDot }) {
   const { size, version } = matrix;
-  const solid = new Set<number>();
-  const mark = (row: number, col: number) => {
+  const solid = /* @__PURE__ */ new Set();
+  const mark = (row, col) => {
     if (row >= 0 && col >= 0 && row < size && col < size) solid.add(row * size + col);
   };
   for (let row = 0; row < size; row++) {
@@ -202,18 +132,15 @@ function renderArt(matrix: Matrix, { fg, bg, art, artDot }: Options): string {
     const cc = key % size;
     for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) mark(cr + dr, cc + dc);
   }
-
-  let out = '';
+  let out = "";
   if (art) {
-    out +=
-      `<image href="${art}" x="0" y="0" width="${size}" height="${size}" ` +
-      `preserveAspectRatio="xMidYMid slice"/>`;
+    out += `<image href="${art}" x="0" y="0" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>`;
   }
   const inset = (1 - artDot) / 2;
-  const dark: string[] = [];
-  const light: string[] = [];
-  const solidDark: string[] = [];
-  const solidLight: string[] = [];
+  const dark = [];
+  const light = [];
+  const solidDark = [];
+  const solidLight = [];
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
       const isDark = matrix.isDark(row, col);
@@ -226,29 +153,32 @@ function renderArt(matrix: Matrix, { fg, bg, art, artDot }: Options): string {
       }
     }
   }
-  out += `<path d="${solidLight.join('')}" fill="${bg}" shape-rendering="crispEdges"/>`;
-  out += `<path d="${light.join('')}" fill="${bg}"/>`;
-  out += `<path d="${solidDark.join('')}" fill="${fg}" shape-rendering="crispEdges"/>`;
-  out += `<path d="${dark.join('')}" fill="${fg}"/>`;
+  out += `<path d="${solidLight.join("")}" fill="${bg}" shape-rendering="crispEdges"/>`;
+  out += `<path d="${light.join("")}" fill="${bg}"/>`;
+  out += `<path d="${solidDark.join("")}" fill="${fg}" shape-rendering="crispEdges"/>`;
+  out += `<path d="${dark.join("")}" fill="${fg}"/>`;
   return out;
 }
-
-export async function svgToCanvas(svg: string, pixelsPerModule: number): Promise<HTMLCanvasElement> {
-  const viewBox = /viewBox="([^"]+)"/.exec(svg)![1].split(' ').map(Number);
+async function svgToCanvas(svg, pixelsPerModule) {
+  const viewBox = /viewBox="([^"]+)"/.exec(svg)[1].split(" ").map(Number);
   const side = Math.round(viewBox[2]) * pixelsPerModule;
   const sized = svg.replace(/width="\d+" height="\d+"/, `width="${side}" height="${side}"`);
-  const url = URL.createObjectURL(new Blob([sized], { type: 'image/svg+xml' }));
+  const url = URL.createObjectURL(new Blob([sized], { type: "image/svg+xml" }));
   try {
     const img = new Image();
     img.src = url;
     await img.decode();
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = side;
     canvas.height = side;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(img, 0, 0, side, side);
     return canvas;
   } finally {
     URL.revokeObjectURL(url);
   }
 }
+export {
+  renderQr,
+  svgToCanvas
+};
