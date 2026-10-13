@@ -15,6 +15,8 @@ const HINTS: Record<Mode, string> = {
     'Paint on the code. Free padding bits are set to your drawing and error correction covers the rest. Greyed cells are fixed by the standard.',
 };
 
+const DEFAULT_PIXEL_VERSION = 5;
+
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const kind = $<HTMLSelectElement>('kind');
@@ -89,7 +91,7 @@ function syncPixelVersions(text: string): number | null {
   const min = pixelMinVersion(text);
   if (min === null) return null;
   if (min !== pixelMinV || pixelVersion.options.length === 0) {
-    const previous = Number(pixelVersion.value) || min;
+    const previous = Number(pixelVersion.value) || DEFAULT_PIXEL_VERSION;
     pixelVersion.innerHTML = '';
     for (let v = min; v <= Math.min(40, min + 12); v++) {
       const option = document.createElement('option');
