@@ -11,8 +11,8 @@ backend. Content presets for plain text or URL, Wi-Fi, email, SMS and vCard. Fou
 - **Pixel art**: spells text like "NOS" in the modules with a 5×7 pixel font. The
   free padding bits are set to the letters, and the remaining mismatches are flipped
   within the Reed-Solomon budget of each block. Bigger versions leave more room.
-- **Background picture**: dots over an uploaded image, finder, timing and alignment
-  patterns kept solid.
+- **Picture**: dots over an uploaded image, finder, timing and alignment patterns
+  kept solid.
 
 Every render is decoded again in the browser with jsQR and shows whether it scans.
 Download as SVG, PNG or WebP.
