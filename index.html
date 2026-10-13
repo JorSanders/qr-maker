@@ -106,7 +106,7 @@
           <select id="pixel-version"></select>
         </label>
         <div class="field" data-modes="pixel">
-          <span>Stamp text</span>
+          <span>Text in the code</span>
           <div class="row stamp">
             <input type="text" id="stamp-text" value="Jor" maxlength="12" />
             <select id="stamp-scale">
@@ -114,18 +114,9 @@
               <option value="2">2×</option>
               <option value="3">3×</option>
             </select>
-            <button type="button" id="stamp" class="secondary">Stamp</button>
           </div>
           <label class="check"><input type="checkbox" id="stamp-halo" checked /><span>Light frame around text</span></label>
         </div>
-        <fieldset class="modes brush" data-modes="pixel">
-          <legend>Brush</legend>
-          <label><input type="radio" name="brush" value="dark" checked /><span>Dark</span></label>
-          <label><input type="radio" name="brush" value="light" /><span>Light</span></label>
-          <label><input type="radio" name="brush" value="erase" /><span>Erase</span></label>
-          <button type="button" id="pixel-clear" class="secondary">Clear</button>
-        </fieldset>
-
         <div class="row">
           <label class="field">
             <span>Dark</span>
@@ -141,7 +132,6 @@
       <section class="preview">
         <div class="canvas">
           <div id="preview" aria-live="polite"></div>
-          <canvas id="editor" hidden></canvas>
         </div>
         <p class="stats" id="stats"></p>
         <p class="badge" id="badge"></p>

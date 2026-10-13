@@ -1,9 +1,8 @@
 import { encodeToTarget, layoutFor, minVersion } from './codec';
 import { decodeMatrix, matrixFromCells, type Matrix } from './qr';
 
-export const NONE = 0;
-export const DARK = 1;
-export const LIGHT = 2;
+const DARK = 1;
+const LIGHT = 2;
 
 export interface PixelResult {
   matrix: Matrix;
@@ -14,10 +13,6 @@ export interface PixelResult {
 
 export function pixelMinVersion(text: string): number | null {
   return minVersion(new TextEncoder().encode(text).length);
-}
-
-export function isLocked(version: number, index: number): boolean {
-  return layoutFor(version).func[index] === 1;
 }
 
 export function solvePixel(text: string, version: number, target: Uint8Array): PixelResult | null {

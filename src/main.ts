@@ -1,9 +1,8 @@
 import jsQR from 'jsqr';
 import './style.css';
 import { loadImage, type LoadedImage } from './image';
-import { DARK, LIGHT, NONE, isLocked, pixelMinVersion, solvePixel, stampText } from './pixel';
+import { pixelMinVersion, solvePixel, stampText } from './pixel';
 import { compose, type Fields, type Kind } from './presets';
-import type { Matrix } from './qr';
 import { renderQr, svgToCanvas, type Mode, type Options, type Rendered } from './render';
 
 const HINTS: Record<Mode, string> = {
@@ -11,7 +10,7 @@ const HINTS: Record<Mode, string> = {
   logo: 'Uses level H error correction and clears a box in the middle for your logo.',
   art: 'Dots over your picture. Function patterns stay solid so it keeps scanning.',
   pixel:
-    'Paint on the code. Free padding bits are set to your drawing and error correction covers the rest. Greyed cells are fixed by the standard.',
+    'Spells your text in the modules. Free padding bits are set to the letters and error correction covers the rest.',
 };
 
 const DEFAULT_PIXEL_VERSION = 5;
@@ -27,7 +26,6 @@ const bg = $<HTMLInputElement>('bg');
 const logoSize = $<HTMLInputElement>('logo-size');
 const artDot = $<HTMLInputElement>('art-dot');
 const preview = $('preview');
-const editor = $<HTMLCanvasElement>('editor');
 const stats = $('stats');
 const badge = $('badge');
 const pixelVersion = $<HTMLSelectElement>('pixel-version');
@@ -40,9 +38,6 @@ let art: string | null = null;
 let current: Rendered | null = null;
 let renderId = 0;
 
-let pixelTarget: Uint8Array | null = null;
-let pixelTargetVersion = 0;
-let pixelMatrix: Matrix | null = null;
 let pixelMinV = 1;
 
 const checked = (name: string) =>
@@ -112,13 +107,6 @@ function stampedTarget(version: number): Uint8Array {
   return target;
 }
 
-function ensureTarget(version: number): Uint8Array {
-  if (pixelTarget && pixelTargetVersion === version) return pixelTarget;
-  pixelTarget = stampedTarget(version);
-  pixelTargetVersion = version;
-  return pixelTarget;
-}
-
 function fittingVersion(text: string, from: number): number | null {
   const last = Math.min(40, pixelMinV + PIXEL_VERSION_SPAN);
   for (let v = from + 1; v <= last; v++) {
@@ -138,9 +126,6 @@ async function update() {
   $('mode-hint').textContent = HINTS[options.mode];
   $('logo-size-out').textContent = `${Math.round(Number(logoSize.value) * 100)}%`;
   $('art-dot-out').textContent = `${Math.round(Number(artDot.value) * 100)}%`;
-  const isPixel = options.mode === 'pixel';
-  preview.hidden = isPixel;
-  editor.hidden = !isPixel;
 
   if (!options.text) {
     show(null, 'Type something to encode.');
@@ -150,24 +135,21 @@ async function update() {
   let rendered: Rendered;
   let extra = '';
   try {
-    if (isPixel) {
+    if (options.mode === 'pixel') {
       const version = syncPixelVersions(options.text);
       if (version === null) throw new Error('too long');
-      const target = ensureTarget(version);
-      const result = solvePixel(options.text, version, target);
+      const result = solvePixel(options.text, version, stampedTarget(version));
       if (!result) throw new Error('too long');
-      pixelMatrix = result.matrix;
       rendered = renderQr(options, result.matrix);
-      extra = ` · ${result.painted - result.unmet} of ${result.painted} painted cells honoured`;
+      extra = ` · ${result.painted - result.unmet} of ${result.painted} text cells honoured`;
       if (result.unmet > 0) {
         const fits = fittingVersion(options.text, version);
-        extra += fits ? ` (the stamped text fits from version ${fits})` : ' (try a bigger version)';
+        extra += fits ? ` (the text fits from version ${fits})` : ' (try a bigger version)';
       }
-      drawEditor(result.matrix, target);
     } else {
       rendered = renderQr(options);
-      preview.innerHTML = rendered.svg;
     }
+    preview.innerHTML = rendered.svg;
   } catch {
     show(null, 'Too much text for this mode.');
     return;
@@ -196,102 +178,6 @@ function show(rendered: Rendered | null, message: string) {
   badge.textContent = '';
   badge.dataset.state = '';
 }
-
-const EDITOR_PX = 840;
-const EDITOR_QUIET = 1;
-
-function drawEditor(matrix: Matrix, target: Uint8Array) {
-  const { size, version } = matrix;
-  const cell = EDITOR_PX / (size + EDITOR_QUIET * 2);
-  editor.width = EDITOR_PX;
-  editor.height = EDITOR_PX;
-  const ctx = editor.getContext('2d')!;
-  ctx.fillStyle = bg.value;
-  ctx.fillRect(0, 0, EDITOR_PX, EDITOR_PX);
-  for (let row = 0; row < size; row++) {
-    for (let col = 0; col < size; col++) {
-      const index = row * size + col;
-      const x = (col + EDITOR_QUIET) * cell;
-      const y = (row + EDITOR_QUIET) * cell;
-      const dark = matrix.cells[index] === 1;
-      if (dark) {
-        ctx.fillStyle = fg.value;
-        ctx.fillRect(x, y, cell, cell);
-      }
-      if (isLocked(version, index)) {
-        ctx.fillStyle = 'rgba(128,128,128,0.45)';
-        ctx.fillRect(x, y, cell, cell);
-        continue;
-      }
-      const want = target[index];
-      if (!want) continue;
-      const honoured = dark === (want === DARK);
-      if (honoured) {
-        ctx.strokeStyle = 'rgba(214,0,28,0.6)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 1.5, y + 1.5, cell - 3, cell - 3);
-      } else {
-        ctx.fillStyle = 'rgba(214,0,28,0.55)';
-        ctx.fillRect(x, y, cell, cell);
-      }
-    }
-  }
-}
-
-let painting = false;
-let pixelTimer = 0;
-
-function schedulePixelUpdate() {
-  window.clearTimeout(pixelTimer);
-  pixelTimer = window.setTimeout(update, 60);
-}
-
-function paintAt(event: PointerEvent) {
-  if (!pixelTarget || !pixelMatrix) return;
-  const { size } = pixelMatrix;
-  const rect = editor.getBoundingClientRect();
-  const cell = rect.width / (size + EDITOR_QUIET * 2);
-  const col = Math.floor((event.clientX - rect.left) / cell) - EDITOR_QUIET;
-  const row = Math.floor((event.clientY - rect.top) / cell) - EDITOR_QUIET;
-  if (col < 0 || row < 0 || col >= size || row >= size) return;
-  const index = row * size + col;
-  if (isLocked(pixelMatrix.version, index)) return;
-  const brush = checked('brush');
-  const value = brush === 'dark' ? DARK : brush === 'light' ? LIGHT : NONE;
-  if (pixelTarget[index] === value) return;
-  pixelTarget[index] = value;
-  schedulePixelUpdate();
-}
-
-editor.addEventListener('pointerdown', (event) => {
-  painting = true;
-  editor.setPointerCapture(event.pointerId);
-  paintAt(event);
-});
-editor.addEventListener('pointermove', (event) => {
-  if (painting) paintAt(event);
-});
-editor.addEventListener('pointerup', () => {
-  painting = false;
-});
-editor.addEventListener('pointercancel', () => {
-  painting = false;
-});
-
-$('stamp').addEventListener('click', () => {
-  if (!pixelTarget) return;
-  stampText(pixelTarget, pixelTargetVersion, stampField.value, Number(stampScale.value), stampHalo.checked);
-  update();
-});
-
-$('pixel-clear').addEventListener('click', () => {
-  pixelTarget?.fill(NONE);
-  update();
-});
-
-pixelVersion.addEventListener('input', () => {
-  pixelTarget = null;
-});
 
 function download(name: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
