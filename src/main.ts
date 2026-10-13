@@ -15,6 +15,7 @@ const HINTS: Record<Mode, string> = {
 };
 
 const DEFAULT_PIXEL_VERSION = 5;
+const PIXEL_VERSION_SPAN = 12;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -92,25 +93,39 @@ function syncPixelVersions(text: string): number | null {
   if (min !== pixelMinV || pixelVersion.options.length === 0) {
     const previous = Number(pixelVersion.value) || DEFAULT_PIXEL_VERSION;
     pixelVersion.innerHTML = '';
-    for (let v = min; v <= Math.min(40, min + 12); v++) {
+    for (let v = min; v <= Math.min(40, min + PIXEL_VERSION_SPAN); v++) {
       const option = document.createElement('option');
       option.value = String(v);
       option.textContent = `Version ${v} · ${v * 4 + 17}×${v * 4 + 17}`;
       pixelVersion.append(option);
     }
-    pixelVersion.value = String(Math.max(min, Math.min(previous, min + 12)));
+    pixelVersion.value = String(Math.max(min, Math.min(previous, min + PIXEL_VERSION_SPAN)));
     pixelMinV = min;
   }
   return Number(pixelVersion.value);
 }
 
+function stampedTarget(version: number): Uint8Array {
+  const size = version * 4 + 17;
+  const target = new Uint8Array(size * size);
+  stampText(target, version, stampField.value, Number(stampScale.value), stampHalo.checked);
+  return target;
+}
+
 function ensureTarget(version: number): Uint8Array {
   if (pixelTarget && pixelTargetVersion === version) return pixelTarget;
-  const size = version * 4 + 17;
-  pixelTarget = new Uint8Array(size * size);
+  pixelTarget = stampedTarget(version);
   pixelTargetVersion = version;
-  stampText(pixelTarget, version, stampField.value, Number(stampScale.value), stampHalo.checked);
   return pixelTarget;
+}
+
+function fittingVersion(text: string, from: number): number | null {
+  const last = Math.min(40, pixelMinV + PIXEL_VERSION_SPAN);
+  for (let v = from + 1; v <= last; v++) {
+    const result = solvePixel(text, v, stampedTarget(v));
+    if (result && result.unmet === 0) return v;
+  }
+  return null;
 }
 
 async function update() {
@@ -144,7 +159,10 @@ async function update() {
       pixelMatrix = result.matrix;
       rendered = renderQr(options, result.matrix);
       extra = ` · ${result.painted - result.unmet} of ${result.painted} painted cells honoured`;
-      if (result.unmet > 0) extra += ' (try a bigger version)';
+      if (result.unmet > 0) {
+        const fits = fittingVersion(options.text, version);
+        extra += fits ? ` (the stamped text fits from version ${fits})` : ' (try a bigger version)';
+      }
       drawEditor(result.matrix, target);
     } else {
       rendered = renderQr(options);
