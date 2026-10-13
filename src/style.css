@@ -161,21 +161,8 @@ body {
 
 .contentHeading {
   letter-spacing: 0.3em;
-  position: relative;
 }
 
-.contentHeading::before {
-  content: "";
-  position: absolute;
-  left: -2.75rem;
-  top: 50%;
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: 50%;
-  border: 2px solid var(--line-strong);
-  transform: translate(-50%, -50%);
-  background-color: var(--paper);
-}
 
 .field {
   display: grid;
@@ -442,10 +429,6 @@ button:hover {
   .right {
     border-left: none;
     border-bottom: 1px solid var(--line-soft);
-  }
-
-  .contentHeading::before {
-    display: none;
   }
 
   .header,
