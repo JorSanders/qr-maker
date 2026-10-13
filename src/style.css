@@ -80,7 +80,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   display: grid;
   place-items: start center;
-  padding: 2rem 1rem;
+  padding: 1.25rem 1rem;
 }
 
 [hidden] {
@@ -108,7 +108,7 @@ body {
   align-items: baseline;
   flex-wrap: wrap;
   gap: 0.5rem 1.5rem;
-  padding: 1.75rem 2.75rem;
+  padding: 1.125rem 2.75rem;
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -133,8 +133,13 @@ body {
   border-left: 1px solid var(--line-soft);
 }
 
+.right .contentBlock {
+  position: sticky;
+  top: 0;
+}
+
 .sidebarBlock {
-  padding: 1.75rem 2rem 1.75rem 2.75rem;
+  padding: 1.25rem 2rem 1.25rem 2.75rem;
 }
 
 .sidebarBlock + .sidebarBlock {
@@ -147,11 +152,11 @@ body {
   letter-spacing: 0.28em;
   text-transform: uppercase;
   font-weight: 700;
-  margin: 0 0 1rem;
+  margin: 0 0 0.75rem;
 }
 
 .contentBlock {
-  padding: 1.75rem 2.75rem;
+  padding: 1.25rem 2.75rem;
 }
 
 .contentHeading {
@@ -340,7 +345,8 @@ input[type="checkbox"] {
 
 .canvas {
   aspect-ratio: 1;
-  max-width: 32rem;
+  width: min(100%, 32rem, 100vh - 17rem);
+  min-width: 14rem;
   background: var(--well);
   border-radius: 0.125rem;
 }
@@ -352,12 +358,12 @@ input[type="checkbox"] {
 }
 
 .stats {
-  margin: 1rem 0 0.25rem;
+  margin: 0.75rem 0 0.125rem;
 }
 
 .badge {
   min-height: 1.6em;
-  margin: 0 0 1.5rem;
+  margin: 0 0 0.75rem;
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -374,11 +380,20 @@ input[type="checkbox"] {
 .downloads {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.downloadsLabel {
+  margin-right: 0.5rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 button {
-  padding: 0.75rem 1.25rem;
+  padding: 0.625rem 1.125rem;
   font: inherit;
   font-size: 0.6875rem;
   font-weight: 600;
@@ -435,7 +450,15 @@ button:hover {
   .header,
   .sidebarBlock,
   .contentBlock {
-    padding: 1.5rem 1.5rem;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .right .contentBlock {
+    position: static;
+  }
+
+  .canvas {
+    width: min(100%, 32rem);
   }
 
   .footer {
