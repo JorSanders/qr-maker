@@ -4,9 +4,10 @@ Client-side QR code generator, no backend. Content presets for plain text or URL
 Wi-Fi, email, SMS and vCard. Four modes:
 
 - **Minimal**: lowest QR version that fits at level L, plain squares or round dots.
-- **Logo**: level H, a box in the centre (square or rectangular, following the logo's
-  aspect ratio) cleared for an uploaded logo. The version grows until the code
-  still decodes with the logo cleared out.
+- **Logo**: level H, a box in the centre (following the logo's aspect ratio) cleared
+  for an uploaded logo. Two sizes: the widest logo the smallest code still decodes
+  with, or one version up for a bigger logo. Both are found by binary search with
+  jsQR and keep a 2% margin.
 - **Pixel art**: spells text like "NOS" in the modules with a 5×7 pixel font.
   `src/codec.ts` is a byte-mode level H encoder that knows which module carries which
   codeword bit. The free padding bits are set to the letters, and the remaining

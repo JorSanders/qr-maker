@@ -2,6 +2,7 @@ import type { LoadedImage } from './image';
 import { alignmentCenters, buildMatrix, decodeMatrix, isFinderZone, type Matrix } from './qr';
 
 export type Mode = 'minimal' | 'logo' | 'pixel' | 'art';
+export type LogoFit = 'small' | 'big';
 
 export interface Options {
   text: string;
@@ -10,7 +11,7 @@ export interface Options {
   bg: string;
   dots: boolean;
   logo: LoadedImage | null;
-  logoSize: number;
+  logoFit: LogoFit;
   art: string | null;
   artDot: number;
 }
@@ -18,25 +19,30 @@ export interface Options {
 export interface Rendered {
   svg: string;
   matrix: Matrix;
+  note?: string;
 }
 
 const QUIET = 4;
-export const MAX_LOGO_AREA = 0.16;
-const LOGO_VERSION_SPAN = 10;
+const LOGO_MIN_FRACTION = 0.1;
+const LOGO_MAX_FRACTION = 0.6;
+const LOGO_MARGIN = 0.02;
 
 export function renderQr(options: Options, prebuilt?: Matrix): Rendered {
-  const matrix =
-    prebuilt ??
-    (options.mode === 'logo'
-      ? logoMatrix(options)
-      : buildMatrix(options.text, options.mode === 'minimal' ? 'L' : 'H'));
+  let note: string | undefined;
+  let matrix = prebuilt;
+  if (!matrix && options.mode === 'logo') {
+    const plan = logoPlan(options);
+    matrix = buildMatrix(options.text, 'H', plan.version);
+    note = `logo ${Math.round(plan.fraction * 100)}% wide`;
+  }
+  matrix ??= buildMatrix(options.text, options.mode === 'minimal' ? 'L' : 'H');
   const body = {
     minimal: (m: Matrix, o: Options) => (o.dots ? renderDots(m, o) : renderMinimal(m, o)),
     logo: renderLogo,
     art: renderArt,
     pixel: renderMinimal,
   }[options.mode](matrix, options);
-  return { svg: wrap(matrix.size, options.bg, body), matrix };
+  return { svg: wrap(matrix.size, options.bg, body), matrix, note };
 }
 
 function wrap(size: number, bg: string, body: string): string {
@@ -77,22 +83,16 @@ interface Rect {
   h: number;
 }
 
-export interface LogoBox {
+interface LogoBox {
   image: Rect;
   clear: Rect;
 }
 
 const LOGO_PAD = 0.5;
 
-export function logoBox(size: number, fraction: number, aspect: number): LogoBox {
-  let w = fraction * size;
-  let h = w / aspect;
-  const maxArea = MAX_LOGO_AREA * size * size;
-  if (w * h > maxArea) {
-    const k = Math.sqrt(maxArea / (w * h));
-    w *= k;
-    h *= k;
-  }
+function logoBox(size: number, fraction: number, aspect: number): LogoBox {
+  const w = fraction * size;
+  const h = w / aspect;
   const image = { x: (size - w) / 2, y: (size - h) / 2, w, h };
   const x0 = Math.max(0, Math.floor(image.x - LOGO_PAD));
   const y0 = Math.max(0, Math.floor(image.y - LOGO_PAD));
@@ -105,21 +105,54 @@ function logoAspect({ logo }: Options): number {
   return logo ? logo.width / logo.height : 1;
 }
 
-function logoMatrix(options: Options): Matrix {
-  const first = buildMatrix(options.text, 'H');
-  for (let v = first.version; v <= Math.min(40, first.version + LOGO_VERSION_SPAN); v++) {
-    const matrix = v === first.version ? first : buildMatrix(options.text, 'H', v);
-    const { clear } = logoBox(matrix.size, options.logoSize, logoAspect(options));
-    const cells = matrix.cells.slice();
-    for (let row = clear.y; row < clear.y + clear.h; row++) cells.fill(0, row * matrix.size + clear.x, row * matrix.size + clear.x + clear.w);
-    if (decodeMatrix({ ...matrix, cells }) === options.text) return matrix;
+interface LogoPlan {
+  version: number;
+  fraction: number;
+}
+
+const logoPlans = new Map<string, LogoPlan[]>();
+
+function decodesWithLogo(matrix: Matrix, text: string, fraction: number, aspect: number): boolean {
+  const { clear } = logoBox(matrix.size, fraction, aspect);
+  const cells = matrix.cells.slice();
+  for (let row = clear.y; row < clear.y + clear.h; row++) {
+    cells.fill(0, row * matrix.size + clear.x, row * matrix.size + clear.x + clear.w);
   }
-  return first;
+  return decodeMatrix({ ...matrix, cells }) === text;
+}
+
+function widestLogo(matrix: Matrix, text: string, aspect: number): number {
+  if (!decodesWithLogo(matrix, text, LOGO_MIN_FRACTION, aspect)) return 0;
+  let lo = LOGO_MIN_FRACTION;
+  let hi = LOGO_MAX_FRACTION;
+  while (hi - lo > 0.005) {
+    const mid = (lo + hi) / 2;
+    if (decodesWithLogo(matrix, text, mid, aspect)) lo = mid;
+    else hi = mid;
+  }
+  return Math.max(0, Math.floor((lo - LOGO_MARGIN) * 100) / 100);
+}
+
+function logoPlan(options: Options): LogoPlan {
+  const aspect = logoAspect(options);
+  const key = `${aspect.toFixed(4)}|${options.text}`;
+  let plans = logoPlans.get(key);
+  if (!plans) {
+    const first = buildMatrix(options.text, 'H');
+    plans = [];
+    plans = [first, buildMatrix(options.text, 'H', first.version + 1)].map((matrix) => ({
+      version: matrix.version,
+      fraction: widestLogo(matrix, options.text, aspect),
+    }));
+    logoPlans.set(key, plans);
+  }
+  if (options.logoFit === 'small' || plans[1].fraction <= plans[0].fraction) return plans[0];
+  return plans[1];
 }
 
 function renderLogo(matrix: Matrix, options: Options): string {
-  const { fg, bg, logo, logoSize } = options;
-  const { image, clear } = logoBox(matrix.size, logoSize, logoAspect(options));
+  const { fg, bg, logo } = options;
+  const { image, clear } = logoBox(matrix.size, logoPlan(options).fraction, logoAspect(options));
   const inBox = (row: number, col: number) =>
     row >= clear.y && row < clear.y + clear.h && col >= clear.x && col < clear.x + clear.w;
   let out = `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;

@@ -3,11 +3,11 @@ import './style.css';
 import { loadImage, type LoadedImage } from './image';
 import { pixelMinVersion, solvePixel, stampText } from './pixel';
 import { compose, type Fields, type Kind } from './presets';
-import { renderQr, svgToCanvas, type Mode, type Options, type Rendered } from './render';
+import { renderQr, svgToCanvas, type LogoFit, type Mode, type Options, type Rendered } from './render';
 
 const HINTS: Record<Mode, string> = {
   minimal: 'Fewest possible squares: lowest version that fits, level L error correction.',
-  logo: 'Uses level H error correction and clears a box in the middle for your logo.',
+  logo: 'Clears a box in the middle for your logo, as wide as the code can still bear.',
   art: 'Dots over your picture. Function patterns stay solid so it keeps scanning.',
   pixel:
     'Spells your text in the modules. Free padding bits are set to the letters and error correction covers the rest.',
@@ -23,7 +23,6 @@ const payload = $<HTMLPreElement>('payload');
 const dots = $<HTMLInputElement>('dots');
 const fg = $<HTMLInputElement>('fg');
 const bg = $<HTMLInputElement>('bg');
-const logoSize = $<HTMLInputElement>('logo-size');
 const artDot = $<HTMLInputElement>('art-dot');
 const preview = $('preview');
 const stats = $('stats');
@@ -76,7 +75,7 @@ function readOptions(): Options {
     bg: bg.value,
     dots: dots.checked,
     logo,
-    logoSize: Number(logoSize.value),
+    logoFit: checked('logo-fit') as LogoFit,
     art,
     artDot: Number(artDot.value),
   };
@@ -124,7 +123,6 @@ async function update() {
     el.hidden = !el.dataset.modes!.split(' ').includes(options.mode);
   });
   $('mode-hint').textContent = HINTS[options.mode];
-  $('logo-size-out').textContent = `${Math.round(Number(logoSize.value) * 100)}%`;
   $('art-dot-out').textContent = `${Math.round(Number(artDot.value) * 100)}%`;
 
   if (!options.text) {
@@ -158,7 +156,7 @@ async function update() {
   const { matrix } = rendered;
   stats.textContent =
     `Version ${matrix.version} · ${matrix.size}×${matrix.size} modules · level ${matrix.ecc} · ` +
-    `${new TextEncoder().encode(options.text).length} bytes${extra}`;
+    `${new TextEncoder().encode(options.text).length} bytes${rendered.note ? ` · ${rendered.note}` : ''}${extra}`;
   badge.textContent = 'Checking scan…';
   badge.dataset.state = 'pending';
 
