@@ -1,5 +1,17 @@
-export async function fileToDataUrl(file: File, maxSide: number): Promise<string> {
-  if (file.type === 'image/svg+xml') return readAsDataUrl(file);
+export interface LoadedImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
+export async function loadImage(file: File, maxSide: number): Promise<LoadedImage> {
+  if (file.type === 'image/svg+xml') {
+    const url = await readAsDataUrl(file);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return { url, width: img.naturalWidth || 1, height: img.naturalHeight || 1 };
+  }
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
@@ -7,7 +19,7 @@ export async function fileToDataUrl(file: File, maxSide: number): Promise<string
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
-  return canvas.toDataURL('image/png');
+  return { url: canvas.toDataURL('image/png'), width: canvas.width, height: canvas.height };
 }
 
 function readAsDataUrl(file: File): Promise<string> {

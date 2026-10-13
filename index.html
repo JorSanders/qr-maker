@@ -12,9 +12,65 @@
         <h1>QR maker</h1>
 
         <label class="field">
-          <span>Text or URL</span>
-          <textarea id="text" rows="3" spellcheck="false">https://nos.nl/l/2625909</textarea>
+          <span>Content</span>
+          <select id="kind">
+            <option value="text">Text or URL</option>
+            <option value="wifi">Wi-Fi network</option>
+            <option value="email">Email</option>
+            <option value="sms">SMS</option>
+            <option value="vcard">Contact (vCard)</option>
+          </select>
         </label>
+
+        <div data-kind="text">
+          <label class="field">
+            <span>Text or URL</span>
+            <textarea id="text" rows="3" spellcheck="false" data-field="text">https://nos.nl/l/2625909</textarea>
+          </label>
+        </div>
+
+        <div data-kind="wifi" hidden>
+          <label class="field"><span>Network name (SSID)</span><input type="text" data-field="ssid" /></label>
+          <label class="field"><span>Password</span><input type="text" data-field="password" /></label>
+          <div class="row">
+            <label class="field">
+              <span>Security</span>
+              <select data-field="auth">
+                <option value="WPA">WPA / WPA2 / WPA3</option>
+                <option value="WEP">WEP</option>
+                <option value="nopass">None</option>
+              </select>
+            </label>
+            <label class="field check"><input type="checkbox" data-field="hidden" /><span>Hidden network</span></label>
+          </div>
+        </div>
+
+        <div data-kind="email" hidden>
+          <label class="field"><span>To</span><input type="email" data-field="address" /></label>
+          <label class="field"><span>Subject</span><input type="text" data-field="subject" /></label>
+          <label class="field"><span>Body</span><textarea rows="2" data-field="body"></textarea></label>
+        </div>
+
+        <div data-kind="sms" hidden>
+          <label class="field"><span>Phone number</span><input type="tel" data-field="number" /></label>
+          <label class="field"><span>Message</span><textarea rows="2" data-field="message"></textarea></label>
+        </div>
+
+        <div data-kind="vcard" hidden>
+          <div class="row">
+            <label class="field"><span>First name</span><input type="text" data-field="first" /></label>
+            <label class="field"><span>Last name</span><input type="text" data-field="last" /></label>
+          </div>
+          <div class="row">
+            <label class="field"><span>Organisation</span><input type="text" data-field="org" /></label>
+            <label class="field"><span>Job title</span><input type="text" data-field="title" /></label>
+          </div>
+          <label class="field"><span>Phone</span><input type="tel" data-field="phone" /></label>
+          <label class="field"><span>Email</span><input type="email" data-field="email" /></label>
+          <label class="field"><span>Website</span><input type="url" data-field="url" /></label>
+        </div>
+
+        <pre class="payload" id="payload" hidden></pre>
 
         <fieldset class="modes" id="modes">
           <legend>Mode</legend>
@@ -22,6 +78,7 @@
           <label><input type="radio" name="mode" value="logo" /><span>Logo</span></label>
           <label><input type="radio" name="mode" value="art" /><span>Art</span></label>
           <label><input type="radio" name="mode" value="dots" /><span>Dots</span></label>
+          <label><input type="radio" name="mode" value="pixel" /><span>Pixel</span></label>
         </fieldset>
         <p class="hint" id="mode-hint"></p>
 
@@ -30,8 +87,8 @@
           <input type="file" id="logo" accept="image/*" />
         </div>
         <label class="field" data-modes="logo">
-          <span>Logo size <output id="logo-size-out"></output></span>
-          <input type="range" id="logo-size" min="0.1" max="0.45" step="0.01" value="0.3" />
+          <span>Logo width <output id="logo-size-out"></output></span>
+          <input type="range" id="logo-size" min="0.1" max="0.6" step="0.01" value="0.3" />
         </label>
 
         <div class="field" data-modes="art">
@@ -53,6 +110,31 @@
           </select>
         </label>
 
+        <label class="field" data-modes="pixel">
+          <span>Size</span>
+          <select id="pixel-version"></select>
+        </label>
+        <div class="field" data-modes="pixel">
+          <span>Stamp text</span>
+          <div class="row stamp">
+            <input type="text" id="stamp-text" value="NOS" maxlength="12" />
+            <select id="stamp-scale">
+              <option value="1">1×</option>
+              <option value="2">2×</option>
+              <option value="3">3×</option>
+            </select>
+            <button type="button" id="stamp" class="secondary">Stamp</button>
+          </div>
+          <label class="check"><input type="checkbox" id="stamp-halo" checked /><span>Light frame around text</span></label>
+        </div>
+        <fieldset class="modes brush" data-modes="pixel">
+          <legend>Brush</legend>
+          <label><input type="radio" name="brush" value="dark" checked /><span>Dark</span></label>
+          <label><input type="radio" name="brush" value="light" /><span>Light</span></label>
+          <label><input type="radio" name="brush" value="erase" /><span>Erase</span></label>
+          <button type="button" id="pixel-clear" class="secondary">Clear</button>
+        </fieldset>
+
         <div class="row">
           <label class="field">
             <span>Dark</span>
@@ -66,7 +148,10 @@
       </section>
 
       <section class="preview">
-        <div class="canvas" id="preview" aria-live="polite"></div>
+        <div class="canvas">
+          <div id="preview" aria-live="polite"></div>
+          <canvas id="editor" hidden></canvas>
+        </div>
         <p class="stats" id="stats"></p>
         <p class="badge" id="badge"></p>
         <div class="row">

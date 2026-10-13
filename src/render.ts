@@ -1,6 +1,7 @@
+import type { LoadedImage } from './image';
 import { alignmentCenters, buildMatrix, isFinderZone, type Ecc, type Matrix } from './qr';
 
-export type Mode = 'minimal' | 'logo' | 'art' | 'dots';
+export type Mode = 'minimal' | 'logo' | 'art' | 'dots' | 'pixel';
 
 export interface Options {
   text: string;
@@ -8,7 +9,7 @@ export interface Options {
   fg: string;
   bg: string;
   ecc: Ecc;
-  logo: string | null;
+  logo: LoadedImage | null;
   logoSize: number;
   art: string | null;
   artDot: number;
@@ -22,14 +23,15 @@ export interface Rendered {
 const QUIET = 4;
 export const MAX_LOGO_AREA = 0.2;
 
-export function renderQr(options: Options): Rendered {
+export function renderQr(options: Options, prebuilt?: Matrix): Rendered {
   const ecc: Ecc = options.mode === 'logo' || options.mode === 'art' ? 'H' : options.ecc;
-  const matrix = buildMatrix(options.text, ecc);
+  const matrix = prebuilt ?? buildMatrix(options.text, ecc);
   const body = {
     minimal: renderMinimal,
     logo: renderLogo,
     art: renderArt,
     dots: renderDots,
+    pixel: renderMinimal,
   }[options.mode](matrix, options);
   return { svg: wrap(matrix.size, options.bg, body), matrix };
 }
@@ -65,26 +67,45 @@ function renderMinimal(matrix: Matrix, { fg }: Options): string {
   return `<path d="${runs(matrix)}" fill="${fg}" shape-rendering="crispEdges"/>`;
 }
 
-export function logoBoxModules(size: number, fraction: number): number {
-  const capped = Math.min(fraction, Math.sqrt(MAX_LOGO_AREA));
-  let n = Math.max(3, Math.round(capped * size));
-  if ((n - size) % 2 !== 0) n -= 1;
-  return Math.max(n, 3);
+export interface LogoBox {
+  w: number;
+  h: number;
+  x: number;
+  y: number;
+}
+
+export function logoBox(size: number, fraction: number, aspect: number): LogoBox {
+  let w = Math.round(fraction * size);
+  let h = Math.round(w / aspect);
+  const maxArea = MAX_LOGO_AREA * size * size;
+  if (w * h > maxArea) {
+    const k = Math.sqrt(maxArea / (w * h));
+    w = Math.floor(w * k);
+    h = Math.floor(h * k);
+  }
+  const fit = (n: number) => {
+    let v = Math.max(3, n);
+    if ((v - size) % 2 !== 0) v = v - 1 >= 3 ? v - 1 : v + 1;
+    return v;
+  };
+  w = fit(w);
+  h = fit(h);
+  return { w, h, x: (size - w) / 2, y: (size - h) / 2 };
 }
 
 function renderLogo(matrix: Matrix, { fg, bg, logo, logoSize }: Options): string {
-  const n = logoBoxModules(matrix.size, logoSize);
-  const from = (matrix.size - n) / 2;
+  const aspect = logo ? logo.width / logo.height : 1;
+  const box = logoBox(matrix.size, logoSize, aspect);
   const inBox = (row: number, col: number) =>
-    row >= from && row < from + n && col >= from && col < from + n;
+    row >= box.y && row < box.y + box.h && col >= box.x && col < box.x + box.w;
   let out = `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;
   if (logo) {
     const pad = 0.5;
     out +=
-      `<image href="${logo}" x="${from + pad}" y="${from + pad}" ` +
-      `width="${n - pad * 2}" height="${n - pad * 2}" preserveAspectRatio="xMidYMid meet"/>`;
+      `<image href="${logo.url}" x="${box.x + pad}" y="${box.y + pad}" ` +
+      `width="${box.w - pad * 2}" height="${box.h - pad * 2}" preserveAspectRatio="xMidYMid meet"/>`;
   } else {
-    out += `<rect x="${from}" y="${from}" width="${n}" height="${n}" fill="${bg}"/>`;
+    out += `<rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="${bg}"/>`;
   }
   return out;
 }
@@ -95,7 +116,7 @@ function renderDots(matrix: Matrix, { fg }: Options): string {
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
       if (isFinderZone(row, col, size, 7) || !matrix.isDark(row, col)) continue;
-      dots += `M${col + 0.5} ${row + 0.05}a0.45 0.45 0 1 1 0 0.9a0.45 0.45 0 1 1 0 -0.9z`;
+      dots += `M${col + 0.5} ${row}a0.5 0.5 0 1 1 0 1a0.5 0.5 0 1 1 0 -1z`;
     }
   }
   const eye = (x: number, y: number) =>
@@ -117,13 +138,7 @@ function renderArt(matrix: Matrix, { fg, bg, art, artDot }: Options): string {
   };
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
-      if (
-        isFinderZone(row, col, size, 9) ||
-        row === 6 ||
-        col === 6
-      ) {
-        mark(row, col);
-      }
+      if (isFinderZone(row, col, size, 9) || row === 6 || col === 6) mark(row, col);
     }
   }
   for (const key of alignmentCenters(version)) {
