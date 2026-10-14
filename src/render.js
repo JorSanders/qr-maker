@@ -1,5 +1,5 @@
 import { alignmentCenters, buildMatrix, decodeMatrix, isFinderZone } from "./qr.js";
-const QUIET = 4;
+const QUIET = 2;
 const LOGO_MIN_FRACTION = 0.1;
 const LOGO_MAX_FRACTION = 0.6;
 const LOGO_MARGIN = 0.02;

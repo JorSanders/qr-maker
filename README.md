@@ -21,7 +21,8 @@ backend. Content presets for plain text or URL, Wi-Fi, email, SMS and vCard. Fou
   both with a button.
 
 Every render is decoded again in the browser with jsQR and shows whether it scans.
-Download as SVG, PNG or WebP.
+Download as SVG, PNG or WebP. The quiet zone around the code is two modules, half of
+what the spec recommends, which is the smallest border that still reads back in every mode.
 
 ## Code
 
