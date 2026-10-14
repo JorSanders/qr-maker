@@ -1,26 +1,74 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>QR maker</title>
-    <meta name="description" content="Make QR codes in the browser: minimal, with a logo, as pixel art or over a picture." />
-    <link rel="preload" href="fonts/Montserrat-Regular.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/Montserrat-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/Montserrat-Bold.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="src/style.css" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M0 0h3v3H0zM5 0h3v3H5zM0 5h3v3H0zM5 5h1v1H5zM7 7h1v1H7z'/%3E%3C/svg%3E" />
+    <title>QR maker: QR code generator with logo, pixel art or picture</title>
+    <meta name="description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards." />
+    <link rel="canonical" href="https://qr.jor.dev/" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f3f3f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121417" media="(prefers-color-scheme: dark)" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://qr.jor.dev/" />
+    <meta property="og:title" content="QR maker: QR code generator with logo, pixel art or picture" />
+    <meta property="og:description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards." />
+    <meta property="og:image" content="https://qr.jor.dev/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="QR maker, a QR code generator with logo, pixel art and picture modes, by jor.dev" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="QR maker: QR code generator with logo, pixel art or picture" />
+    <meta name="twitter:description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/x-icon" sizes="32x32" href="./favicon.ico" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="preload" href="./brand/fonts/Montserrat-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./brand/fonts/Montserrat-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./brand/fonts/Montserrat-Bold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./brand/tokens.css" />
+    <link rel="stylesheet" href="./brand/base.css" />
+    <link rel="stylesheet" href="./src/style.css" />
+    <script src="./brand/theme.js"></script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "QR maker",
+        "url": "https://qr.jor.dev/",
+        "description": "Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards.",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+        "author": { "@type": "Person", "name": "Jor Sanders", "url": "https://jor.dev" }
+      }
+    </script>
   </head>
   <body>
-    <main class="main">
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand-link" href="https://jor.dev" aria-label="jor.dev">
+        <img class="only-light" src="./brand/logo/wordmark.svg" alt="jor.dev" />
+        <img class="only-dark" src="./brand/logo/wordmark-on-dark.svg" alt="jor.dev" />
+      </a>
+      <div class="theme-picker" role="group" aria-label="Color scheme">
+        <button type="button" data-theme-choice="auto" aria-pressed="true">Auto</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+    </header>
+    <main class="main" id="main">
       <header class="header">
-        <h1 class="name">QR maker</h1>
-        <p class="tagline">Minimal, with a logo, as pixel art or over a picture</p>
+        <div class="headerText">
+          <h1 class="name">QR maker</h1>
+          <p class="tagline">Minimal, with a logo, as pixel art or over a picture</p>
+        </div>
       </header>
 
       <div class="left">
-        <section class="sidebarBlock">
-          <h2 class="sidebarHeading">Content</h2>
+        <section class="sidebarBlock" aria-labelledby="content-heading">
+          <h2 class="sidebarHeading" id="content-heading">Content</h2>
 
           <label class="field">
             <span>Type</span>
@@ -81,26 +129,26 @@
             <label class="field"><span>Website</span><input type="url" data-field="url" /></label>
           </div>
 
-          <pre class="payload" id="payload" hidden></pre>
+          <pre class="payload" id="payload" aria-label="Encoded payload" hidden></pre>
         </section>
 
-        <section class="sidebarBlock">
-          <h2 class="sidebarHeading">Mode</h2>
+        <section class="sidebarBlock" aria-labelledby="mode-heading">
+          <h2 class="sidebarHeading" id="mode-heading">Mode</h2>
 
-          <fieldset class="modes" id="modes">
+          <fieldset class="modes" id="modes" aria-labelledby="mode-heading">
             <label><input type="radio" name="mode" value="minimal" checked /><span>Minimal</span></label>
             <label><input type="radio" name="mode" value="logo" /><span>Logo</span></label>
             <label><input type="radio" name="mode" value="pixel" /><span>Pixel art</span></label>
             <label><input type="radio" name="mode" value="art" /><span>Picture</span></label>
           </fieldset>
-          <p class="hint" id="mode-hint"></p>
+          <p class="hint" id="mode-hint" aria-live="polite"></p>
 
-          <label class="check" data-modes="minimal"><input type="checkbox" id="dots" /><span>Round dots</span></label>
+          <label class="check"><input type="checkbox" id="dots" checked /><span>Round dots</span></label>
 
-          <div class="field" data-modes="logo">
-            <span>Logo</span>
+          <label class="field" data-modes="logo">
+            <span>Logo (the jor.dev wordmark until you pick one)</span>
             <input type="file" id="logo" accept="image/*" />
-          </div>
+          </label>
           <fieldset class="modes" data-modes="logo">
             <legend>Logo size</legend>
             <label><input type="radio" name="logo-fit" value="small" checked /><span>Smallest code</span></label>
@@ -112,10 +160,10 @@
             <select id="pixel-version"></select>
           </label>
           <div class="field" data-modes="pixel">
-            <span>Text in the code</span>
+            <label for="stamp-text">Text in the code</label>
             <div class="row stamp">
               <input type="text" id="stamp-text" value="Jor" maxlength="12" />
-              <select id="stamp-scale">
+              <select id="stamp-scale" aria-label="Text scale">
                 <option value="1">1×</option>
                 <option value="2">2×</option>
                 <option value="3">3×</option>
@@ -124,55 +172,73 @@
             <label class="check"><input type="checkbox" id="stamp-halo" checked /><span>Light frame around text</span></label>
           </div>
 
-          <div class="field" data-modes="art">
-            <span>Picture</span>
-            <input type="file" id="art" accept="image/*" />
-          </div>
           <label class="field" data-modes="art">
-            <span>Dot size <output id="art-dot-out"></output></span>
-            <input type="range" id="art-dot" min="0.3" max="0.9" step="0.05" value="0.6" />
+            <span>Picture (the jor.dev mark until you pick one)</span>
+            <input type="file" id="art" accept="image/*" />
           </label>
+          <label class="field" data-modes="art" for="art-dot">
+            <span>Dot size <output id="art-dot-out" for="art-dot"></output></span>
+            <input type="range" id="art-dot" min="0.3" max="0.9" step="0.05" value="0.3" />
+          </label>
+          <label class="field" data-modes="art" for="art-zoom">
+            <span>Picture size <output id="art-zoom-out" for="art-zoom"></output></span>
+            <input type="range" id="art-zoom" min="0.1" max="3" step="0.05" value="0.45" />
+          </label>
+          <p class="hint" data-modes="art">Drag the preview to move the picture. 100% fills the code.</p>
+          <button type="button" class="button button-outline" id="art-reset" data-modes="art">Reset picture position</button>
         </section>
 
-        <section class="sidebarBlock">
-          <h2 class="sidebarHeading">Colours</h2>
+        <section class="sidebarBlock" aria-labelledby="colours-heading">
+          <h2 class="sidebarHeading" id="colours-heading">Colours</h2>
           <div class="row">
-            <label class="field">
-              <span>Dark</span>
-              <input type="color" id="fg" value="#000000" />
-            </label>
-            <label class="field">
-              <span>Light</span>
-              <input type="color" id="bg" value="#ffffff" />
-            </label>
+            <div class="field">
+              <label for="fg">Dark</label>
+              <div class="colour">
+                <input type="color" id="fg" value="#000000" />
+                <input type="text" id="fg-hex" value="#000000" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Dark colour as hex" aria-describedby="fg-hex-error" />
+              </div>
+              <p class="hint error" id="fg-hex-error" role="alert" hidden>Use a hex colour like #3dd6cf</p>
+            </div>
+            <div class="field">
+              <label for="bg">Light</label>
+              <div class="colour">
+                <input type="color" id="bg" value="#ffffff" />
+                <input type="text" id="bg-hex" value="#ffffff" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Light colour as hex" aria-describedby="bg-hex-error" />
+              </div>
+              <p class="hint error" id="bg-hex-error" role="alert" hidden>Use a hex colour like #3dd6cf</p>
+            </div>
           </div>
         </section>
       </div>
 
       <div class="right">
-        <section class="contentBlock">
-          <h2 class="contentHeading">Preview</h2>
+        <section class="contentBlock" aria-labelledby="preview-heading">
+          <h2 class="contentHeading" id="preview-heading">Preview</h2>
           <div class="canvas">
-            <div id="preview" aria-live="polite"></div>
+            <div id="preview" role="img" aria-label="QR code preview"></div>
           </div>
-          <p class="stats" id="stats"></p>
-          <p class="badge" id="badge"></p>
-          <div class="downloads">
-            <span class="downloadsLabel">Download</span>
-            <button type="button" id="dl-svg">SVG</button>
-            <button type="button" id="dl-png">PNG</button>
-            <button type="button" id="dl-webp">WebP</button>
+          <p class="stats" id="stats" aria-live="polite"></p>
+          <p class="badge" id="badge" role="status"></p>
+          <div class="downloads" role="group" aria-labelledby="downloads-label">
+            <span class="downloadsLabel" id="downloads-label">Download</span>
+            <button type="button" class="button" id="dl-svg" aria-label="Download SVG">SVG</button>
+            <button type="button" class="button" id="dl-png" aria-label="Download PNG">PNG</button>
+            <button type="button" class="button" id="dl-webp" aria-label="Download WebP">WebP</button>
           </div>
         </section>
-
       </div>
-
-      <footer class="footer">
-        Every code is decoded again in your browser before it is shown. Nothing leaves your device.
-        Made by <a class="link" href="https://jor.dev">Jor Sanders</a>.
-      </footer>
     </main>
-    <script src="vendor/jsQR.js"></script>
-    <script type="module" src="src/main.js"></script>
+    <footer class="site-footer">
+      <p>QR maker is my QR code generator, it runs entirely in the browser. It makes minimal codes, codes with a logo in the middle, pixel art codes that spell a word, and dotted codes drawn over a picture, with presets for URLs, Wi-Fi, email, SMS and vCards. Download as SVG, PNG or WebP.</p>
+      <p>Every code is decoded again in your browser before it is shown. Nothing leaves your device.</p>
+      <p class="site-footer-tagline">Provided free of charge, without tracking. For the love of the game.</p>
+      <p class="site-footer-meta">
+        <span>Made by <a href="https://jor.dev">Jor Sanders</a></span>
+        <a href="https://github.com/JorSanders/qr-maker">Source on GitHub</a>
+        <a href="https://github.com/JorSanders/qr-maker/issues">Found a problem?</a>
+      </p>
+    </footer>
+    <script src="./vendor/jsQR.js"></script>
+    <script type="module" src="./src/main.js"></script>
   </body>
 </html>

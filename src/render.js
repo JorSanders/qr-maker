@@ -12,11 +12,12 @@ function renderQr(options, prebuilt) {
     note = `logo ${Math.round(plan.fraction * 100)}% wide`;
   }
   matrix ??= buildMatrix(options.text, options.mode === "minimal" ? "L" : "H");
+  const squaresOrDots = (m, o) => o.dots ? renderDots(m, o) : renderMinimal(m, o);
   const body = {
-    minimal: (m, o) => o.dots ? renderDots(m, o) : renderMinimal(m, o),
+    minimal: squaresOrDots,
     logo: renderLogo,
     art: renderArt,
-    pixel: renderMinimal
+    pixel: squaresOrDots
   }[options.mode](matrix, options);
   return { svg: wrap(matrix.size, options.bg, body), matrix, note };
 }
@@ -96,7 +97,7 @@ function renderLogo(matrix, options) {
   const { fg, bg, logo } = options;
   const { image, clear } = logoBox(matrix.size, logoPlan(options).fraction, logoAspect(options));
   const inBox = (row, col) => row >= clear.y && row < clear.y + clear.h && col >= clear.x && col < clear.x + clear.w;
-  let out = `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;
+  let out = options.dots ? renderDots(matrix, options, inBox) : `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;
   if (logo) {
     out += `<image href="${logo.url}" x="${image.x}" y="${image.y}" width="${image.w}" height="${image.h}" preserveAspectRatio="xMidYMid meet"/>`;
   } else {
@@ -104,19 +105,25 @@ function renderLogo(matrix, options) {
   }
   return out;
 }
-function renderDots(matrix, { fg }) {
+function renderDots(matrix, { fg }, skip = () => false) {
   const { size } = matrix;
   let dots = "";
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
-      if (isFinderZone(row, col, size, 7) || !matrix.isDark(row, col)) continue;
+      if (isFinderZone(row, col, size, 7) || skip(row, col) || !matrix.isDark(row, col)) continue;
       dots += `M${col + 0.5} ${row}a0.5 0.5 0 1 1 0 1a0.5 0.5 0 1 1 0 -1z`;
     }
   }
-  const eye = (x, y) => `<rect x="${x + 0.5}" y="${y + 0.5}" width="6" height="6" rx="0.5" fill="none" stroke="${fg}" stroke-width="1"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3" rx="0.4" fill="${fg}"/>`;
-  return `<path d="${dots}" fill="${fg}"/>` + eye(0, 0) + eye(size - 7, 0) + eye(0, size - 7);
+  return `<path d="${dots}" fill="${fg}"/>` + finderFrames(size, fg);
 }
-function renderArt(matrix, { fg, bg, art, artDot }) {
+function finderFrames(size, fg) {
+  const eye = (x, y) => `<rect x="${x + 0.5}" y="${y + 0.5}" width="6" height="6" rx="0.5" fill="none" stroke="${fg}" stroke-width="1"/><rect x="${x + 2}" y="${y + 2}" width="3" height="3" rx="0.4" fill="${fg}"/>`;
+  return eye(0, 0) + eye(size - 7, 0) + eye(0, size - 7);
+}
+function alignmentFrame(centerRow, centerCol, fg) {
+  return `<rect x="${centerCol - 1.5}" y="${centerRow - 1.5}" width="4" height="4" rx="0.5" fill="none" stroke="${fg}" stroke-width="1"/><rect x="${centerCol}" y="${centerRow}" width="1" height="1" rx="0.3" fill="${fg}"/>`;
+}
+function renderArt(matrix, { fg, bg, art, artDot, dots, artZoom = 1, artOffset = { x: 0, y: 0 } }) {
   const { size, version } = matrix;
   const solid = /* @__PURE__ */ new Set();
   const mark = (row, col) => {
@@ -127,14 +134,27 @@ function renderArt(matrix, { fg, bg, art, artDot }) {
       if (isFinderZone(row, col, size, 9) || row === 6 || col === 6) mark(row, col);
     }
   }
+  const alignmentCells = /* @__PURE__ */ new Set();
+  const alignmentFrames = [];
   for (const key of alignmentCenters(version)) {
     const cr = Math.floor(key / size);
     const cc = key % size;
-    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) mark(cr + dr, cc + dc);
+    alignmentFrames.push([cr, cc]);
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+      mark(cr + dr, cc + dc);
+      alignmentCells.add((cr + dr) * size + cc + dc);
+    }
   }
   let out = "";
   if (art) {
-    out += `<image href="${art}" x="0" y="0" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>`;
+    const sourceWidth = art.width > 0 ? art.width : size;
+    const sourceHeight = art.height > 0 ? art.height : size;
+    const cover = Math.max(size / sourceWidth, size / sourceHeight) * artZoom;
+    const width = sourceWidth * cover;
+    const height = sourceHeight * cover;
+    const x = (size - width) / 2 + artOffset.x;
+    const y = (size - height) / 2 + artOffset.y;
+    out += `<image href="${art.url}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${width.toFixed(2)}" height="${height.toFixed(2)}" preserveAspectRatio="none"/>`;
   }
   const inset = (1 - artDot) / 2;
   const dark = [];
@@ -145,7 +165,18 @@ function renderArt(matrix, { fg, bg, art, artDot }) {
     for (let col = 0; col < size; col++) {
       const isDark = matrix.isDark(row, col);
       if (solid.has(row * size + col)) {
-        (isDark ? solidDark : solidLight).push(`M${col} ${row}h1v1h-1z`);
+        if (!isDark) {
+          solidLight.push(`M${col} ${row}h1v1h-1z`);
+        } else if (dots && (isFinderZone(row, col, size, 7) || alignmentCells.has(row * size + col))) {
+          continue;
+        } else if (dots) {
+          solidDark.push(`M${col} ${row + 0.5}a0.5 0.5 0 1 1 1 0a0.5 0.5 0 1 1 -1 0z`);
+        } else {
+          solidDark.push(`M${col} ${row}h1v1h-1z`);
+        }
+      } else if (dots) {
+        const radius = artDot / 2;
+        (isDark ? dark : light).push(`M${col + inset} ${row + 0.5}a${radius} ${radius} 0 1 1 ${artDot} 0a${radius} ${radius} 0 1 1 -${artDot} 0z`);
       } else {
         const x = col + inset;
         const y = row + inset;
@@ -155,8 +186,12 @@ function renderArt(matrix, { fg, bg, art, artDot }) {
   }
   out += `<path d="${solidLight.join("")}" fill="${bg}" shape-rendering="crispEdges"/>`;
   out += `<path d="${light.join("")}" fill="${bg}"/>`;
-  out += `<path d="${solidDark.join("")}" fill="${fg}" shape-rendering="crispEdges"/>`;
+  out += `<path d="${solidDark.join("")}" fill="${fg}"${dots ? "" : ' shape-rendering="crispEdges"'}/>`;
   out += `<path d="${dark.join("")}" fill="${fg}"/>`;
+  if (dots) {
+    out += finderFrames(size, fg);
+    for (const [centerRow, centerCol] of alignmentFrames) out += alignmentFrame(centerRow, centerCol, fg);
+  }
   return out;
 }
 async function svgToCanvas(svg, pixelsPerModule) {

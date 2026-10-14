@@ -2,8 +2,27 @@ import { encodeToTarget, layoutFor, minVersion } from "./codec.js";
 import { decodeMatrix, matrixFromCells } from "./qr.js";
 const DARK = 1;
 const LIGHT = 2;
-function pixelMinVersion(text) {
-  return minVersion(new TextEncoder().encode(text).length, "H");
+const FINDER_ROWS = 9;
+const EDGE_MARGIN = 1;
+function pixelTextBox(stamp, scale, halo) {
+  const chars = [...stamp.toUpperCase()].filter((ch) => ch in GLYPHS);
+  if (chars.length === 0) return { width: 0, height: 0 };
+  const glyphWidth = chars.reduce((sum, ch) => sum + GLYPHS[ch].split("|")[0].length, 0) + (chars.length - 1);
+  const margin = halo ? scale : 0;
+  return { width: glyphWidth * scale + 2 * margin, height: 7 * scale + 2 * margin };
+}
+function textFitsVersion(box, version) {
+  const size = version * 4 + 17;
+  return box.width <= size - 2 * EDGE_MARGIN && box.height <= size - 2 * FINDER_ROWS;
+}
+function pixelMinVersion(text, stamp = "", scale = 1, halo = false) {
+  const capacity = minVersion(new TextEncoder().encode(text).length, "H");
+  if (capacity === null) return null;
+  const box = pixelTextBox(stamp, scale, halo);
+  for (let version = capacity; version <= 40; version++) {
+    if (textFitsVersion(box, version)) return version;
+  }
+  return null;
 }
 function solvePixel(text, version, target) {
   const layout = layoutFor(version, "H");
@@ -99,6 +118,8 @@ function stampText(target, version, text, scale, halo) {
 }
 export {
   pixelMinVersion,
+  pixelTextBox,
   solvePixel,
-  stampText
+  stampText,
+  textFitsVersion
 };

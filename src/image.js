@@ -15,6 +15,14 @@ async function loadImage(file, maxSide) {
   bitmap.close();
   return { url: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
 }
+async function loadImageFromUrl(url, maxSide) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`could not load ${url}: ${response.status}`);
+  const blob = await response.blob();
+  const name = url.split("/").pop();
+  const file = new File([blob], name, { type: blob.type || "image/svg+xml" });
+  return loadImage(file, maxSide);
+}
 function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -24,5 +32,6 @@ function readAsDataUrl(file) {
   });
 }
 export {
-  loadImage
+  loadImage,
+  loadImageFromUrl
 };
