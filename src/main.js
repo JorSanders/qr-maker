@@ -3,7 +3,7 @@ const jsQR = globalThis.jsQR;
 import { loadImage, loadImageFromUrl } from "./image.js";
 import { pixelMinVersion, pixelTextBox, solvePixel, stampText, textFitsVersion } from "./pixel.js";
 import { compose } from "./presets.js";
-import { renderQr, svgToCanvas } from "./render.js";
+import { prepareLogoPlan, renderQr, svgToCanvas } from "./render.js";
 const HINTS = {
   minimal: "Fewest possible squares: lowest version that fits, level L error correction.",
   logo: "Clears a box in the middle for your logo, as wide as the code can still bear.",
@@ -147,6 +147,10 @@ async function update() {
         warning = fits ? `the text fits from version ${fits}` : "try a bigger version";
       }
     } else {
+      if (options.mode === "logo") {
+        await prepareLogoPlan(options);
+        if (id !== renderId) return;
+      }
       rendered = renderQr(options);
     }
     preview.innerHTML = rendered.svg;

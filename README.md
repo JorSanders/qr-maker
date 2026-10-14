@@ -7,8 +7,9 @@ backend. Content presets for plain text or URL, Wi-Fi, email, SMS and vCard. Fou
   every mode, the finder patterns become rounded frames.
 - **Logo**: level H, a box in the centre (following the logo's aspect ratio) cleared
   for an uploaded logo, the jor.dev wordmark until you pick one. Two sizes: the widest logo the smallest code still decodes
-  with, or one version up for a bigger logo. Both are found by binary search with
-  jsQR and keep a 2% margin.
+  with, or one version up for a bigger logo (the default). Both are found by binary
+  search that must decode with the box filled light and filled dark, so a dark logo
+  is as safe as a light one, and keep a 2% margin.
 - **Pixel art**: spells text like "NOS" in the modules with a 5×7 pixel font. Typing
   picks the smallest version where the whole text fits, the size select overrides it. The
   free padding bits are set to the letters, and the remaining mismatches are flipped

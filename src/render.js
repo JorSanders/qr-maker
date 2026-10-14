@@ -60,42 +60,61 @@ function logoAspect({ logo }) {
 const logoPlans = /* @__PURE__ */ new Map();
 function decodesWithLogo(matrix, text, fraction, aspect) {
   const { clear } = logoBox(matrix.size, fraction, aspect);
-  const cells = matrix.cells.slice();
-  for (let row = clear.y; row < clear.y + clear.h; row++) {
-    cells.fill(0, row * matrix.size + clear.x, row * matrix.size + clear.x + clear.w);
+  for (const fill of [0, 1]) {
+    const cells = matrix.cells.slice();
+    for (let row = clear.y; row < clear.y + clear.h; row++) {
+      cells.fill(fill, row * matrix.size + clear.x, row * matrix.size + clear.x + clear.w);
+    }
+    if (decodeMatrix({ ...matrix, cells }) !== text) return false;
   }
-  return decodeMatrix({ ...matrix, cells }) === text;
+  return true;
 }
-function widestLogo(matrix, text, aspect) {
-  if (!decodesWithLogo(matrix, text, LOGO_MIN_FRACTION, aspect)) return 0;
+// A candidate logo size is verified the way the badge verifies the final code: the real
+// render, rasterised, read back with jsQR. Solid fill simulations miss what a dark or busy
+// logo does to the reader's thresholding.
+async function decodesRendered(matrix, options, fraction) {
+  const svg = wrap(matrix.size, options.bg, renderLogo(matrix, options, fraction));
+  const canvas = await svgToCanvas(svg, 8);
+  const { data, width, height } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+  return globalThis.jsQR(data, width, height)?.data === options.text;
+}
+async function widestLogo(matrix, options) {
+  const simulated = (fraction) => decodesWithLogo(matrix, options.text, fraction, logoAspect(options));
+  if (!simulated(LOGO_MIN_FRACTION) || !(await decodesRendered(matrix, options, LOGO_MIN_FRACTION))) return 0;
   let lo = LOGO_MIN_FRACTION;
   let hi = LOGO_MAX_FRACTION;
-  while (hi - lo > 5e-3) {
+  while (hi - lo > 1e-2) {
     const mid = (lo + hi) / 2;
-    if (decodesWithLogo(matrix, text, mid, aspect)) lo = mid;
+    if (simulated(mid) && await decodesRendered(matrix, options, mid)) lo = mid;
     else hi = mid;
   }
   return Math.max(0, Math.floor((lo - LOGO_MARGIN) * 100) / 100);
 }
-function logoPlan(options) {
-  const aspect = logoAspect(options);
-  const key = `${aspect.toFixed(4)}|${options.text}`;
-  let plans = logoPlans.get(key);
-  if (!plans) {
-    const first = buildMatrix(options.text, "H");
-    plans = [];
-    plans = [first, buildMatrix(options.text, "H", first.version + 1)].map((matrix) => ({
-      version: matrix.version,
-      fraction: widestLogo(matrix, options.text, aspect)
-    }));
-    logoPlans.set(key, plans);
+function logoPlanKey(options) {
+  const logoId = options.logo ? `${options.logo.url.length}:${options.logo.url.slice(-48)}` : "none";
+  return [logoAspect(options).toFixed(4), options.text, options.dots, options.fg, options.bg, logoId].join("|");
+}
+// Fills the plan cache for these options. Call it before renderQr in logo mode.
+async function prepareLogoPlan(options) {
+  const key = logoPlanKey(options);
+  if (logoPlans.has(key)) return;
+  const first = buildMatrix(options.text, "H");
+  const matrices = [first, buildMatrix(options.text, "H", first.version + 1)];
+  const plans = [];
+  for (const matrix of matrices) {
+    plans.push({ version: matrix.version, fraction: await widestLogo(matrix, options) });
   }
+  logoPlans.set(key, plans);
+}
+function logoPlan(options) {
+  const plans = logoPlans.get(logoPlanKey(options));
+  if (!plans) throw new Error("logo plan not prepared");
   if (options.logoFit === "small" || plans[1].fraction <= plans[0].fraction) return plans[0];
   return plans[1];
 }
-function renderLogo(matrix, options) {
+function renderLogo(matrix, options, fraction = logoPlan(options).fraction) {
   const { fg, bg, logo } = options;
-  const { image, clear } = logoBox(matrix.size, logoPlan(options).fraction, logoAspect(options));
+  const { image, clear } = logoBox(matrix.size, fraction, logoAspect(options));
   const inBox = (row, col) => row >= clear.y && row < clear.y + clear.h && col >= clear.x && col < clear.x + clear.w;
   let out = options.dots ? renderDots(matrix, options, inBox) : `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;
   if (logo) {
@@ -214,6 +233,7 @@ async function svgToCanvas(svg, pixelsPerModule) {
   }
 }
 export {
+  prepareLogoPlan,
   renderQr,
   svgToCanvas
 };
