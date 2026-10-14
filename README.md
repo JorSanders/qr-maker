@@ -6,8 +6,9 @@ backend. Content presets for plain text or URL, Wi-Fi, email, SMS and vCard. Fou
 - **Minimal**: lowest QR version that fits at level L. Round dots are an option in
   every mode, the finder patterns become rounded frames.
 - **Logo**: level H, a box in the centre (following the logo's aspect ratio) cleared
-  for an uploaded logo, the jor.dev wordmark until you pick one. Two sizes: the widest logo the smallest code still decodes
-  with, or one version up for a bigger logo (the default). Both are found by binary
+  for an uploaded logo, the jor.dev wordmark until you pick one. Three sizes: the widest logo the smallest code still decodes
+  with, one version up for a bigger logo (the default), or two versions up for the
+  biggest logo. Both are found by binary
   search that must decode with the box filled light and filled dark, so a dark logo
   is as safe as a light one, and keep a 2% margin.
 - **Pixel art**: spells text like "NOS" in the modules with a 5×7 pixel font. Typing

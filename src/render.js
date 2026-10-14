@@ -1,7 +1,8 @@
 import { alignmentCenters, buildMatrix, decodeMatrix, isFinderZone } from "./qr.js";
 const QUIET = 2;
 const LOGO_MIN_FRACTION = 0.1;
-const LOGO_MAX_FRACTION = 0.6;
+const LOGO_MAX_FRACTION = 0.75;
+const LOGO_FIT_STEPS = { small: 0, big: 1, biggest: 2 };
 const LOGO_MARGIN = 0.02;
 function renderQr(options, prebuilt) {
   let note;
@@ -99,7 +100,7 @@ async function prepareLogoPlan(options) {
   const key = logoPlanKey(options);
   if (logoPlans.has(key)) return;
   const first = buildMatrix(options.text, "H");
-  const matrices = [first, buildMatrix(options.text, "H", first.version + 1)];
+  const matrices = [first, buildMatrix(options.text, "H", first.version + 1), buildMatrix(options.text, "H", first.version + 2)];
   const plans = [];
   for (const matrix of matrices) {
     plans.push({ version: matrix.version, fraction: await widestLogo(matrix, options) });
@@ -109,8 +110,12 @@ async function prepareLogoPlan(options) {
 function logoPlan(options) {
   const plans = logoPlans.get(logoPlanKey(options));
   if (!plans) throw new Error("logo plan not prepared");
-  if (options.logoFit === "small" || plans[1].fraction <= plans[0].fraction) return plans[0];
-  return plans[1];
+  const steps = LOGO_FIT_STEPS[options.logoFit] ?? 0;
+  let best = plans[0];
+  for (const plan of plans.slice(1, steps + 1)) {
+    if (plan.fraction > best.fraction) best = plan;
+  }
+  return best;
 }
 function renderLogo(matrix, options, fraction = logoPlan(options).fraction) {
   const { fg, bg, logo } = options;
