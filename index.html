@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QR maker: QR code generator with logo, pixel art or picture</title>
-    <meta name="description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards." />
+    <meta name="description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture, with advanced settings for error correction, version and mask, and a learn view that breaks any code down. Presets for URLs, Wi-Fi, email, SMS and vCards." />
     <link rel="canonical" href="https://qr.jor.dev/" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f3f3f3" media="(prefers-color-scheme: light)" />
@@ -12,14 +12,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://qr.jor.dev/" />
     <meta property="og:title" content="QR maker: QR code generator with logo, pixel art or picture" />
-    <meta property="og:description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards." />
+    <meta property="og:description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture, with advanced settings for error correction, version and mask, and a learn view that breaks any code down. Presets for URLs, Wi-Fi, email, SMS and vCards." />
     <meta property="og:image" content="https://qr.jor.dev/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="QR maker, a QR code generator with logo, pixel art and picture modes, by jor.dev" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="QR maker: QR code generator with logo, pixel art or picture" />
-    <meta name="twitter:description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards." />
+    <meta name="twitter:description" content="Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture, with advanced settings for error correction, version and mask, and a learn view that breaks any code down. Presets for URLs, Wi-Fi, email, SMS and vCards." />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="icon" type="image/x-icon" sizes="32x32" href="./favicon.ico" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
@@ -36,7 +36,7 @@
         "@type": "WebApplication",
         "name": "QR maker",
         "url": "https://qr.jor.dev/",
-        "description": "Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture. Presets for URLs, Wi-Fi, email, SMS and vCards.",
+        "description": "Free QR code generator that runs in your browser: minimal, with a logo, as pixel art or over a picture, with advanced settings for error correction, version and mask, and a learn view that breaks any code down. Presets for URLs, Wi-Fi, email, SMS and vCards.",
         "applicationCategory": "UtilitiesApplication",
         "operatingSystem": "Any",
         "browserRequirements": "Requires JavaScript",
@@ -62,7 +62,7 @@
       <header class="header">
         <div class="headerText">
           <h1 class="name">QR maker</h1>
-          <p class="tagline">Minimal, with a logo, as pixel art or over a picture</p>
+          <p class="tagline">Minimal, with a logo, as pixel art or over a picture, and a peek at how it works</p>
         </div>
       </header>
 
@@ -149,17 +149,13 @@
             <span>Logo (the jor.dev wordmark until you pick one)</span>
             <input type="file" id="logo" accept="image/*" />
           </label>
-          <fieldset class="modes" data-modes="logo">
+          <fieldset class="modes" id="logo-fit" data-modes="logo">
             <legend>Logo size</legend>
-            <label><input type="radio" name="logo-fit" value="small" /><span>Smallest code</span></label>
-            <label><input type="radio" name="logo-fit" value="big" checked /><span>Bigger logo</span></label>
-            <label><input type="radio" name="logo-fit" value="biggest" /><span>Biggest logo</span></label>
+            <label><input type="radio" name="logo-fit" value="small" /><span>Small <small></small></span></label>
+            <label><input type="radio" name="logo-fit" value="big" checked /><span>Medium <small></small></span></label>
+            <label><input type="radio" name="logo-fit" value="biggest" /><span>Large <small></small></span></label>
           </fieldset>
 
-          <label class="field" data-modes="pixel">
-            <span>Size</span>
-            <select id="pixel-version"></select>
-          </label>
           <div class="field" data-modes="pixel">
             <label for="stamp-text">Text in the code</label>
             <div class="row stamp">
@@ -189,6 +185,51 @@
           <button type="button" class="button button-outline" id="art-reset" data-modes="art">Reset picture position</button>
         </section>
 
+        <section class="sidebarBlock" aria-labelledby="advanced-heading">
+          <h2 class="sidebarHeading" id="advanced-heading">Advanced</h2>
+          <label class="check"><input type="checkbox" id="advanced" /><span>Pick error correction, version, mask, padding and character set myself</span></label>
+          <div id="advanced-fields" hidden>
+            <label class="field">
+              <span>Error correction level</span>
+              <select id="ecc">
+                <option value="auto"></option>
+                <option value="L">L, repairs about 7%</option>
+                <option value="M">M, repairs about 15%</option>
+                <option value="Q">Q, repairs about 25%</option>
+                <option value="H">H, repairs about 30%</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Version</span>
+              <select id="version"></select>
+            </label>
+            <label class="field">
+              <span>Mask</span>
+              <select id="mask">
+                <option value="auto"></option>
+                <option value="0">Mask 0</option>
+                <option value="1">Mask 1</option>
+                <option value="2">Mask 2</option>
+                <option value="3">Mask 3</option>
+                <option value="4">Mask 4</option>
+                <option value="5">Mask 5</option>
+                <option value="6">Mask 6</option>
+                <option value="7">Mask 7</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Padding after the message</span>
+              <select id="padding">
+                <option value="auto"></option>
+                <option value="spec">Pad bytes 11101100 and 00010001, like the spec says</option>
+                <option value="zeros">Zeros</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="eci" /><span>Add a UTF-8 ECI marker, so strict scanners do not read the bytes as Latin-1</span></label>
+            <p class="hint" data-modes="pixel">In pixel art the letters take most of the padding bits, the choice only fills the rest.</p>
+          </div>
+        </section>
+
         <section class="sidebarBlock" aria-labelledby="colours-heading">
           <h2 class="sidebarHeading" id="colours-heading">Colours</h2>
           <div class="row">
@@ -210,6 +251,18 @@
             </div>
           </div>
         </section>
+
+        <section class="sidebarBlock" aria-labelledby="learn-heading">
+          <h2 class="sidebarHeading" id="learn-heading">Learn</h2>
+          <label class="check"><input type="checkbox" id="learn" /><span>Break this code down and see how it works</span></label>
+          <div id="learn-options" hidden>
+            <label class="check"><input type="checkbox" id="learn-regions" checked /><span>Colour each part</span></label>
+            <label class="check"><input type="checkbox" id="learn-numbers" /><span>Number the bits in reading order</span></label>
+            <label class="check"><input type="checkbox" id="learn-path" /><span>Show the placement path</span></label>
+            <label class="check"><input type="checkbox" id="learn-unmasked" /><span>Show the code before masking</span></label>
+            <label class="check"><input type="checkbox" id="learn-mask-dots" /><span>Mark the bits the mask flipped</span></label>
+          </div>
+        </section>
       </div>
 
       <div class="right">
@@ -218,6 +271,8 @@
           <div class="canvas">
             <div id="preview" role="img" aria-label="QR code preview"></div>
           </div>
+          <ul class="legend" id="learn-legend" hidden aria-label="What the colours mean"></ul>
+          <p class="inspector" id="learn-inspector" hidden aria-live="polite">Hover over a module to see what it does. Click or tap to flip it.</p>
           <p class="stats" id="stats" aria-live="polite"></p>
           <p class="badge" id="badge" role="status"></p>
           <div class="downloads" role="group" aria-labelledby="downloads-label">
@@ -227,10 +282,32 @@
             <button type="button" class="button" id="dl-webp" aria-label="Download WebP">WebP</button>
           </div>
         </section>
+        <section class="contentBlock breakdown" id="learn-breakdown" aria-labelledby="breakdown-heading" hidden>
+          <h2 class="contentHeading" id="breakdown-heading">Breakdown</h2>
+
+          <h3 class="step">Bits</h3>
+          <div class="bits" id="learn-bits"></div>
+          <p class="hint" id="learn-bits-summary"></p>
+
+          <h3 class="step">Blocks and error correction</h3>
+          <p class="hint" id="learn-blocks-summary"></p>
+          <div id="learn-blocks"></div>
+
+          <h3 class="step">Masks</h3>
+          <ul class="masks" id="learn-masks" aria-label="The eight masks"></ul>
+          <p class="hint" id="learn-mask-rule"></p>
+
+          <h3 class="step">Format and version</h3>
+          <div class="bitRows" id="learn-format"></div>
+
+          <h3 class="step">Damage</h3>
+          <ul class="damage" id="learn-damage" aria-live="polite"></ul>
+          <button type="button" class="button button-outline" id="learn-reset">Repair everything</button>
+        </section>
       </div>
     </main>
     <footer class="site-footer">
-      <p>QR maker is my QR code generator, it runs entirely in the browser. It makes minimal codes, codes with a logo in the middle, pixel art codes that spell a word, and dotted codes drawn over a picture, with presets for URLs, Wi-Fi, email, SMS and vCards. Download as SVG, PNG or WebP.</p>
+      <p>QR maker is my QR code generator, it runs entirely in the browser. It makes minimal codes, codes with a logo in the middle, pixel art codes that spell a word, and dotted codes drawn over a picture. Advanced settings let you pick the error correction level, version and mask. The learn view takes any code apart step by step: bits, error correction blocks, placement, masks and format information, and lets you break it. It has presets for URLs, Wi-Fi, email, SMS and vCards. Download as SVG, PNG or WebP.</p>
       <p>Every code is decoded again in your browser before it is shown. Nothing leaves your device.</p>
       <p class="site-footer-tagline">Provided free of charge, without tracking. For the love of the game.</p>
       <p class="site-footer-meta">

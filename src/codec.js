@@ -352,12 +352,15 @@ function rsRemainder(data, divisor) {
 function charCountBits(version) {
   return version < 10 ? 8 : 16;
 }
-function bitsNeeded(version, byteLength) {
-  return 4 + charCountBits(version) + byteLength * 8;
+const ECI_MODE = 7;
+const ECI_UTF8 = 26;
+const ECI_BITS = 12;
+function bitsNeeded(version, byteLength, eci = false) {
+  return (eci ? ECI_BITS : 0) + 4 + charCountBits(version) + byteLength * 8;
 }
-function minVersion(byteLength, ecc) {
+function minVersion(byteLength, ecc, eci = false) {
   for (let v = 1; v <= 40; v++) {
-    if (bitsNeeded(v, byteLength) <= layoutFor(v, ecc).dataCodewords * 8) return v;
+    if (bitsNeeded(v, byteLength, eci) <= layoutFor(v, ecc).dataCodewords * 8) return v;
   }
   return null;
 }
@@ -399,20 +402,29 @@ function penalty(cells, size) {
   result += 10 * (Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1);
   return result;
 }
-function encodeToTarget(layout, bytes, target, safety) {
+const PAD_BYTES = [236, 17];
+function encodeToTarget(layout, bytes, target, safety, { mask: fixedMask = null, padding = "zeros", eci = false } = {}) {
   const { size, func, base, positions, ecLen, blockData, dataCodewords } = layout;
   const totalBits = dataCodewords * 8;
-  const used = bitsNeeded(layout.version, bytes.length);
+  const used = bitsNeeded(layout.version, bytes.length, eci);
   if (used > totalBits) return null;
   const fixed = new Uint8Array(totalBits);
   let cursor = 0;
   const put = (value, count) => {
     for (let i = count - 1; i >= 0; i--) fixed[cursor++] = value >>> i & 1;
   };
+  if (eci) {
+    put(ECI_MODE, 4);
+    put(ECI_UTF8, 8);
+  }
   put(4, 4);
   put(bytes.length, charCountBits(layout.version));
   for (const b of bytes) put(b, 8);
   const freeStart = Math.min(used + 4, totalBits);
+  if (padding === "spec") {
+    cursor = Math.ceil(freeStart / 8) * 8;
+    for (let pad = 0; cursor < totalBits; pad++) put(PAD_BYTES[pad % 2], 8);
+  }
   const streamToPlacement = [];
   for (let b = 0; b < blockData.length; b++) {
     for (let i = 0; i < blockData[b]; i++) streamToPlacement.push(layout.placementOfData[b][i]);
@@ -423,7 +435,8 @@ function encodeToTarget(layout, bytes, target, safety) {
   let bestScore = Infinity;
   const capacity = Math.max(0, Math.floor(ecLen / 2) - safety);
   const hasTarget = target.some((v) => v !== 0);
-  for (let mask = 0; mask < 8; mask++) {
+  const masks = fixedMask === null ? [0, 1, 2, 3, 4, 5, 6, 7] : [fixedMask];
+  for (const mask of masks) {
     const bits = fixed.slice();
     for (let f = freeStart; f < totalBits; f++) {
       const p = streamToPlacement[f >> 3];
@@ -472,11 +485,15 @@ function encodeToTarget(layout, bytes, target, safety) {
     const perBlock = blockData.map(() => []);
     for (const [p, list] of mismatches) perBlock[layout.codewordBlock[p]].push([p, list]);
     let unmet = 0;
+    const flipped = [];
     for (const entries of perBlock) {
       entries.sort((a, b) => b[1].length - a[1].length);
       entries.forEach(([, list], index) => {
         if (index < capacity) {
-          for (const m of list) cells[m] ^= 1;
+          for (const m of list) {
+            cells[m] ^= 1;
+            flipped.push(m);
+          }
         } else {
           unmet += list.length;
         }
@@ -485,14 +502,22 @@ function encodeToTarget(layout, bytes, target, safety) {
     const score = hasTarget ? unmet : penalty(cells, size);
     if (score < bestScore) {
       bestScore = score;
-      best = { cells, mask, painted, unmet };
+      best = { cells, mask, painted, unmet, codewords, flipped };
     }
   }
   return best;
 }
 export {
+  alignmentPositions,
   bitsNeeded,
+  charCountBits,
   encodeToTarget,
+  formatBits,
+  formatCells,
   layoutFor,
-  minVersion
+  maskBit,
+  minVersion,
+  penalty,
+  rsDivisor,
+  rsRemainder
 };

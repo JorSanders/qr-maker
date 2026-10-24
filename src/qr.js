@@ -1,18 +1,45 @@
 const jsQR = globalThis.jsQR;
 
-import { encodeToTarget, layoutFor, minVersion } from "./codec.js";
-function matrixFromCells(cells, version, ecc) {
+import { bitsNeeded, encodeToTarget, layoutFor, minVersion } from "./codec.js";
+const LEVELS = ["L", "M", "Q", "H"];
+function matrixFromCells(cells, version, ecc, details = {}) {
   const size = version * 4 + 17;
-  return { size, version, ecc, cells, isDark: (row, col) => cells[row * size + col] === 1 };
+  return { size, version, ecc, cells, ...details, isDark: (row, col) => cells[row * size + col] === 1 };
 }
-function buildMatrix(text, ecc, version = 0) {
+function encodingDetails(encoded) {
+  return { mask: encoded.mask, codewords: encoded.codewords, flipped: encoded.flipped };
+}
+function buildMatrix(text, ecc, version = 0, { mask = null, padding = "spec", eci = false } = {}) {
   const bytes = new TextEncoder().encode(text);
-  const v = version || minVersion(bytes.length, ecc);
-  if (v === null) throw new Error("Too much data");
+  const smallest = minVersion(bytes.length, ecc, eci);
+  if (smallest === null) throw new Error("Too much data");
+  if (version && version < smallest) throw new Error("Version too small");
+  const v = version || smallest;
   const layout = layoutFor(v, ecc);
-  const encoded = encodeToTarget(layout, bytes, new Uint8Array(layout.size * layout.size), 0);
+  const encoded = encodeToTarget(layout, bytes, new Uint8Array(layout.size * layout.size), 0, { mask, padding, eci });
   if (!encoded) throw new Error("Too much data");
-  return matrixFromCells(encoded.cells, v, ecc);
+  return matrixFromCells(encoded.cells, v, ecc, encodingDetails(encoded));
+}
+// Version and level pairs to try, smallest version first and within a version the lowest
+// level first. A fixed level or version stays fixed.
+function versionLevelPairs(text, { ecc = null, version = 0, eci = false }, span, from = 1) {
+  const byteLength = new TextEncoder().encode(text).length;
+  const levels = ecc ? [ecc] : LEVELS;
+  const smallest = minVersion(byteLength, levels[0], eci);
+  if (smallest === null) return [];
+  const first = version || Math.max(smallest, from);
+  const last = version || Math.min(40, first + span);
+  const pairs = [];
+  for (let v = first; v <= last; v++) {
+    for (const level of levels) {
+      if (bitsNeeded(v, byteLength, eci) <= layoutFor(v, level).dataCodewords * 8) pairs.push({ version: v, ecc: level });
+    }
+  }
+  return pairs;
+}
+function fallbackPair(pairs, ecc) {
+  const level = ecc ?? "H";
+  return pairs.find((pair) => pair.ecc === level) ?? pairs[0];
 }
 function isFinderZone(row, col, size, reach) {
   return row < reach && col < reach || row < reach && col >= size - reach || row >= size - reach && col < reach;
@@ -59,6 +86,9 @@ export {
   alignmentCenters,
   buildMatrix,
   decodeMatrix,
+  encodingDetails,
+  fallbackPair,
   isFinderZone,
-  matrixFromCells
+  matrixFromCells,
+  versionLevelPairs
 };

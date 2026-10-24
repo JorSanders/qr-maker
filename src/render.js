@@ -1,18 +1,27 @@
-import { alignmentCenters, buildMatrix, decodeMatrix, isFinderZone } from "./qr.js";
+import { alignmentCenters, buildMatrix, decodeMatrix, fallbackPair, isFinderZone, versionLevelPairs } from "./qr.js";
 const QUIET = 2;
 const LOGO_MIN_FRACTION = 0.1;
 const LOGO_MAX_FRACTION = 0.75;
-const LOGO_FIT_STEPS = { small: 0, big: 1, biggest: 2 };
+const LOGO_SMALL_GOAL = 0.2;
+const LOGO_LARGE_SPAN = 4;
 const LOGO_MARGIN = 0.02;
+const SEARCH_SPAN = 6;
 function renderQr(options, prebuilt) {
   let note;
   let matrix = prebuilt;
+  let covered = [];
   if (!matrix && options.mode === "logo") {
     const plan = logoPlan(options);
-    matrix = buildMatrix(options.text, "H", plan.version);
-    note = `logo ${Math.round(plan.fraction * 100)}% wide`;
+    matrix = buildMatrix(options.text, plan.ecc, plan.version, options);
+    note = plan.fraction > 0 ? `logo ${Math.round(plan.fraction * 100)}% ${logoAspect(options) >= 1 ? "wide" : "tall"}` : `no room for a logo at level ${plan.ecc}`;
+    covered = coveredByLogo(matrix.size, plan.fraction, logoAspect(options));
   }
-  matrix ??= buildMatrix(options.text, options.mode === "minimal" ? "L" : "H");
+  if (!matrix && options.mode === "art") {
+    const plan = artPlans.get(artPlanKey(options));
+    if (!plan) throw new Error("picture plan not prepared");
+    matrix = buildMatrix(options.text, plan.ecc, plan.version, options);
+  }
+  matrix ??= buildMatrix(options.text, options.ecc, options.version, options);
   const squaresOrDots = (m, o) => o.dots ? renderDots(m, o) : renderMinimal(m, o);
   const body = {
     minimal: squaresOrDots,
@@ -20,7 +29,7 @@ function renderQr(options, prebuilt) {
     art: renderArt,
     pixel: squaresOrDots
   }[options.mode](matrix, options);
-  return { svg: wrap(matrix.size, options.bg, body), matrix, note };
+  return { svg: wrap(matrix.size, options.bg, body), matrix, note, covered };
 }
 function wrap(size, bg, body) {
   const total = size + QUIET * 2;
@@ -45,9 +54,11 @@ function renderMinimal(matrix, { fg }) {
   return `<path d="${runs(matrix)}" fill="${fg}" shape-rendering="crispEdges"/>`;
 }
 const LOGO_PAD = 0.5;
+// The fraction is the logo's longer side as a share of the code, so a tall logo is sized by
+// its height.
 function logoBox(size, fraction, aspect) {
-  const w = fraction * size;
-  const h = w / aspect;
+  const w = aspect >= 1 ? fraction * size : fraction * size * aspect;
+  const h = aspect >= 1 ? w / aspect : fraction * size;
   const image = { x: (size - w) / 2, y: (size - h) / 2, w, h };
   const x0 = Math.max(0, Math.floor(image.x - LOGO_PAD));
   const y0 = Math.max(0, Math.floor(image.y - LOGO_PAD));
@@ -57,6 +68,15 @@ function logoBox(size, fraction, aspect) {
 }
 function logoAspect({ logo }) {
   return logo ? logo.width / logo.height : 1;
+}
+function coveredByLogo(size, fraction, aspect) {
+  if (fraction === 0) return [];
+  const { clear } = logoBox(size, fraction, aspect);
+  const cells = [];
+  for (let row = clear.y; row < clear.y + clear.h; row++) {
+    for (let col = clear.x; col < clear.x + clear.w; col++) cells.push(row * size + col);
+  }
+  return cells;
 }
 const logoPlans = /* @__PURE__ */ new Map();
 function decodesWithLogo(matrix, text, fraction, aspect) {
@@ -74,15 +94,19 @@ function decodesWithLogo(matrix, text, fraction, aspect) {
 // render, rasterised, read back with jsQR. Solid fill simulations miss what a dark or busy
 // logo does to the reader's thresholding.
 async function decodesRendered(matrix, options, fraction) {
-  const svg = wrap(matrix.size, options.bg, renderLogo(matrix, options, fraction));
+  return scans(wrap(matrix.size, options.bg, renderLogo(matrix, options, fraction)), options.text);
+}
+async function scans(svg, text) {
   const canvas = await svgToCanvas(svg, 8);
   const { data, width, height } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
-  return globalThis.jsQR(data, width, height)?.data === options.text;
+  return globalThis.jsQR(data, width, height)?.data === text;
 }
-async function widestLogo(matrix, options) {
+// The binary search starts from a size that is known to scan, because reading back is not
+// perfectly monotonic: a bigger logo sometimes scans where a smaller one did not.
+async function widestLogo(matrix, options, known = null) {
   const simulated = (fraction) => decodesWithLogo(matrix, options.text, fraction, logoAspect(options));
-  if (!simulated(LOGO_MIN_FRACTION) || !(await decodesRendered(matrix, options, LOGO_MIN_FRACTION))) return 0;
-  let lo = LOGO_MIN_FRACTION;
+  if (known === null && (!simulated(LOGO_MIN_FRACTION) || !(await decodesRendered(matrix, options, LOGO_MIN_FRACTION)))) return 0;
+  let lo = known ?? LOGO_MIN_FRACTION;
   let hi = LOGO_MAX_FRACTION;
   while (hi - lo > 1e-2) {
     const mid = (lo + hi) / 2;
@@ -93,32 +117,83 @@ async function widestLogo(matrix, options) {
 }
 function logoPlanKey(options) {
   const logoId = options.logo ? `${options.logo.url.length}:${options.logo.url.slice(-48)}` : "none";
-  return [logoAspect(options).toFixed(4), options.text, options.dots, options.fg, options.bg, logoId].join("|");
+  return [logoAspect(options).toFixed(4), options.text, options.dots, options.fg, options.bg, logoId, options.ecc, options.version, options.mask, options.padding, options.eci].join("|");
 }
-// Fills the plan cache for these options. Call it before renderQr in logo mode.
+function candidatePairs(options) {
+  const pairs = versionLevelPairs(options.text, options, SEARCH_SPAN);
+  if (pairs.length === 0) throw new Error(options.version ? "Version too small" : "Too much data");
+  return pairs;
+}
+async function logoFits(matrix, options, fraction) {
+  return decodesWithLogo(matrix, options.text, fraction, logoAspect(options)) && (await decodesRendered(matrix, options, fraction));
+}
+// The widest logo a version and level allow. Pass the size that already scanned, if known.
+async function logoPlanFor(pair, options, known = null) {
+  const matrix = buildMatrix(options.text, pair.ecc, pair.version, options);
+  return { ...pair, fraction: await widestLogo(matrix, options, known) };
+}
+// The smallest version, and in it the lowest level, where a logo of this size still scans.
+async function smallestCodeFor(pairs, options, fraction) {
+  const goal = fraction + LOGO_MARGIN;
+  for (const pair of pairs) {
+    const matrix = buildMatrix(options.text, pair.ecc, pair.version, options);
+    if (await logoFits(matrix, options, goal)) return logoPlanFor(pair, options, goal);
+  }
+  return null;
+}
+// Fills the plan cache with all three sizes. Small is the smallest code a 20% logo scans in,
+// large the biggest logo found at the highest level over the next few versions, and medium
+// the smallest code a logo halfway between the two scans in. Call it before renderQr in
+// logo mode.
 async function prepareLogoPlan(options) {
   const key = logoPlanKey(options);
   if (logoPlans.has(key)) return;
-  const first = buildMatrix(options.text, "H");
-  const matrices = [first, buildMatrix(options.text, "H", first.version + 1), buildMatrix(options.text, "H", first.version + 2)];
-  const plans = [];
-  for (const matrix of matrices) {
-    plans.push({ version: matrix.version, fraction: await widestLogo(matrix, options) });
+  const pairs = candidatePairs(options);
+  const small = (await smallestCodeFor(pairs, options, LOGO_SMALL_GOAL)) ?? (await logoPlanFor(fallbackPair(pairs, options.ecc), options));
+  const level = options.ecc ?? "H";
+  let large = small;
+  for (const pair of pairs) {
+    if (pair.ecc !== level || pair.version < small.version || pair.version > small.version + LOGO_LARGE_SPAN) continue;
+    const plan = await logoPlanFor(pair, options);
+    if (plan.fraction > large.fraction) large = plan;
   }
-  logoPlans.set(key, plans);
+  const halfway = (small.fraction + large.fraction) / 2;
+  const medium = large.fraction > small.fraction ? ((await smallestCodeFor(pairs, options, halfway)) ?? large) : small;
+  logoPlans.set(key, { small, big: medium.fraction > large.fraction ? large : medium, biggest: medium.fraction > large.fraction ? medium : large });
+}
+function logoSizes(options) {
+  return logoPlans.get(logoPlanKey(options)) ?? null;
+}
+const artPlans = /* @__PURE__ */ new Map();
+// Leaves out the picture position and size, so dragging does not search again.
+function artPlanKey(options) {
+  const artId = options.art ? `${options.art.url.length}:${options.art.url.slice(-48)}` : "none";
+  return [options.text, artId, options.artDot, options.dots, options.fg, options.bg, options.ecc, options.version, options.mask, options.padding, options.eci].join("|");
+}
+// Fills the plan cache with the smallest version and lowest level where the picture still
+// scans. Call it before renderQr in picture mode.
+async function prepareArtPlan(options) {
+  const key = artPlanKey(options);
+  if (artPlans.has(key)) return;
+  const pairs = candidatePairs(options);
+  let found = null;
+  for (const pair of pairs) {
+    const matrix = buildMatrix(options.text, pair.ecc, pair.version, options);
+    if (await scans(wrap(matrix.size, options.bg, renderArt(matrix, options)), options.text)) {
+      found = pair;
+      break;
+    }
+  }
+  artPlans.set(key, found ?? fallbackPair(pairs, options.ecc));
 }
 function logoPlan(options) {
   const plans = logoPlans.get(logoPlanKey(options));
   if (!plans) throw new Error("logo plan not prepared");
-  const steps = LOGO_FIT_STEPS[options.logoFit] ?? 0;
-  let best = plans[0];
-  for (const plan of plans.slice(1, steps + 1)) {
-    if (plan.fraction > best.fraction) best = plan;
-  }
-  return best;
+  return plans[options.logoFit];
 }
 function renderLogo(matrix, options, fraction = logoPlan(options).fraction) {
   const { fg, bg, logo } = options;
+  if (fraction === 0) return options.dots ? renderDots(matrix, options) : renderMinimal(matrix, options);
   const { image, clear } = logoBox(matrix.size, fraction, logoAspect(options));
   const inBox = (row, col) => row >= clear.y && row < clear.y + clear.h && col >= clear.x && col < clear.x + clear.w;
   let out = options.dots ? renderDots(matrix, options, inBox) : `<path d="${runs(matrix, inBox)}" fill="${fg}" shape-rendering="crispEdges"/>`;
@@ -238,7 +313,11 @@ async function svgToCanvas(svg, pixelsPerModule) {
   }
 }
 export {
+  QUIET,
+  logoSizes,
+  prepareArtPlan,
   prepareLogoPlan,
   renderQr,
-  svgToCanvas
+  svgToCanvas,
+  wrap
 };

@@ -1,5 +1,5 @@
 import { encodeToTarget, layoutFor, minVersion } from "./codec.js";
-import { decodeMatrix, matrixFromCells } from "./qr.js";
+import { decodeMatrix, encodingDetails, matrixFromCells } from "./qr.js";
 const DARK = 1;
 const LIGHT = 2;
 const FINDER_ROWS = 9;
@@ -15,8 +15,8 @@ function textFitsVersion(box, version) {
   const size = version * 4 + 17;
   return box.width <= size - 2 * EDGE_MARGIN && box.height <= size - 2 * FINDER_ROWS;
 }
-function pixelMinVersion(text, stamp = "", scale = 1, halo = false) {
-  const capacity = minVersion(new TextEncoder().encode(text).length, "H");
+function pixelMinVersion(text, stamp = "", scale = 1, halo = false, ecc = "H", eci = false) {
+  const capacity = minVersion(new TextEncoder().encode(text).length, ecc, eci);
   if (capacity === null) return null;
   const box = pixelTextBox(stamp, scale, halo);
   for (let version = capacity; version <= 40; version++) {
@@ -24,14 +24,14 @@ function pixelMinVersion(text, stamp = "", scale = 1, halo = false) {
   }
   return null;
 }
-function solvePixel(text, version, target) {
-  const layout = layoutFor(version, "H");
+function solvePixel(text, version, target, ecc = "H", { mask = null, padding = "zeros", eci = false } = {}) {
+  const layout = layoutFor(version, ecc);
   const bytes = new TextEncoder().encode(text);
   let fallback = null;
   for (const safety of [2, 3, 4, 6, 8, 12]) {
-    const encoded = encodeToTarget(layout, bytes, target, safety);
+    const encoded = encodeToTarget(layout, bytes, target, safety, { mask, padding, eci });
     if (!encoded) return null;
-    const matrix = matrixFromCells(encoded.cells, version, "H");
+    const matrix = matrixFromCells(encoded.cells, version, ecc, encodingDetails(encoded));
     const result = { matrix, painted: encoded.painted, unmet: encoded.unmet, safety };
     if (decodeMatrix(matrix) === text) return result;
     fallback = result;

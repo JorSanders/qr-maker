@@ -1,20 +1,25 @@
 const jsQR = globalThis.jsQR;
 
 import { loadImage, loadImageFromUrl } from "./image.js";
+import { setLearnActive, setupLearn, updateLearn } from "./learn.js";
 import { pixelMinVersion, pixelTextBox, solvePixel, stampText, textFitsVersion } from "./pixel.js";
 import { compose } from "./presets.js";
-import { prepareLogoPlan, renderQr, svgToCanvas } from "./render.js";
+import { minVersion } from "./codec.js";
+import { decodeMatrix, fallbackPair, versionLevelPairs } from "./qr.js";
+import { logoSizes, prepareArtPlan, prepareLogoPlan, renderQr, svgToCanvas } from "./render.js";
 const HINTS = {
   minimal: "Fewest possible squares: lowest version that fits, level L error correction.",
   logo: "Clears a box in the middle for your logo, as wide as the code can still bear.",
   art: "Dots over your picture. Function patterns stay solid so it keeps scanning.",
   pixel: "Spells your text in the modules. Free padding bits are set to the letters and error correction covers the rest."
 };
+const DEFAULT_PADDING = { minimal: "spec", logo: "spec", pixel: "zeros", art: "spec" };
+const PADDING_NAMES = { spec: "pad bytes", zeros: "zeros" };
+const DEFAULT_MASK = { minimal: "lowest penalty", logo: "lowest penalty", pixel: "fewest wrong letter modules", art: "lowest penalty" };
 const DEFAULT_LOGO_URL = "./brand/logo/wordmark-tile.svg";
 const DEFAULT_ART_URL = "./brand/logo/mark.svg";
 const DEFAULT_ART_SIZE = "0.45";
-const DEFAULT_PIXEL_VERSION = 5;
-const PIXEL_VERSION_SPAN = 12;
+const PIXEL_SEARCH_SPAN = 12;
 const $ = (id) => document.getElementById(id);
 const kind = $("kind");
 const payload = $("payload");
@@ -26,10 +31,16 @@ const artZoom = $("art-zoom");
 const preview = $("preview");
 const stats = $("stats");
 const badge = $("badge");
-const pixelVersion = $("pixel-version");
 const stampField = $("stamp-text");
 const stampScale = $("stamp-scale");
 const stampHalo = $("stamp-halo");
+const advanced = $("advanced");
+const eccSelect = $("ecc");
+const versionSelect = $("version");
+const maskSelect = $("mask");
+const paddingSelect = $("padding");
+const eciCheckbox = $("eci");
+const learn = $("learn");
 let defaultLogo = null;
 let defaultArt = null;
 let logo = null;
@@ -37,8 +48,7 @@ let art = null;
 let artOffset = { x: 0, y: 0 };
 let current = null;
 let renderId = 0;
-let pixelMinV = 1;
-let autoPixelVersion = true;
+const pixelPlans = new Map();
 const checked = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
 function readFields(k) {
   const fields = {};
@@ -61,9 +71,16 @@ function readText() {
   return text;
 }
 function readOptions() {
+  const mode = checked("mode");
+  const custom = advanced.checked;
   return {
     text: readText(),
-    mode: checked("mode"),
+    mode,
+    ecc: custom && eccSelect.value !== "auto" ? eccSelect.value : mode === "minimal" ? "L" : null,
+    version: custom ? Number(versionSelect.value) : 0,
+    mask: custom && maskSelect.value !== "auto" ? Number(maskSelect.value) : null,
+    padding: custom && paddingSelect.value !== "auto" ? paddingSelect.value : DEFAULT_PADDING[mode],
+    eci: custom && eciCheckbox.checked,
     fg: fg.value,
     bg: bg.value,
     dots: dots.checked,
@@ -75,22 +92,19 @@ function readOptions() {
     artOffset
   };
 }
-function syncPixelVersions(text) {
-  const min = pixelMinVersion(text, stampField.value, Number(stampScale.value), stampHalo.checked);
-  if (min === null) return null;
-  if (min !== pixelMinV || pixelVersion.options.length === 0) {
-    const previous = Number(pixelVersion.value) || DEFAULT_PIXEL_VERSION;
-    pixelVersion.innerHTML = "";
-    for (let v = min; v <= Math.min(40, min + PIXEL_VERSION_SPAN); v++) {
-      const option = document.createElement("option");
-      option.value = String(v);
-      option.textContent = `Version ${v} \xB7 ${v * 4 + 17}\xD7${v * 4 + 17}`;
-      pixelVersion.append(option);
-    }
-    pixelVersion.value = String(Math.max(min, Math.min(previous, min + PIXEL_VERSION_SPAN)));
-    pixelMinV = min;
-  }
-  return Number(pixelVersion.value);
+function syncAdvanced(options) {
+  $("advanced-fields").hidden = !advanced.checked;
+  $("logo-fit").hidden = options.mode !== "logo" || (options.version > 0 && options.ecc !== null);
+  eccSelect.options[0].textContent = options.mode === "minimal" ? "Mode default (L)" : "Mode default (lowest that works)";
+  maskSelect.options[0].textContent = `Mode default (${DEFAULT_MASK[options.mode]})`;
+  paddingSelect.options[0].textContent = `Mode default (${PADDING_NAMES[DEFAULT_PADDING[options.mode]]})`;
+  const smallest = options.mode === "pixel" ? pixelMinimum(options) : minVersion(new TextEncoder().encode(options.text).length, options.ecc ?? "L", options.eci);
+  versionSelect.options[0].textContent =
+    options.mode === "pixel" ? "Smallest where the text fits" : smallest ? `Smallest that fits (version ${smallest})` : "Smallest that fits";
+  for (let v = 1; v <= 40; v++) versionSelect.options[v].disabled = smallest !== null && v < smallest;
+}
+function pixelMinimum(options) {
+  return pixelMinVersion(options.text, stampField.value, Number(stampScale.value), stampHalo.checked, options.ecc ?? "L", options.eci);
 }
 function stampedTarget(version) {
   const size = version * 4 + 17;
@@ -98,13 +112,28 @@ function stampedTarget(version) {
   stampText(target, version, stampField.value, Number(stampScale.value), stampHalo.checked);
   return target;
 }
-function fittingVersion(text, from) {
-  const last = Math.min(40, pixelMinV + PIXEL_VERSION_SPAN);
+function pixelWorks(options, version, ecc) {
+  const result = solvePixel(options.text, version, stampedTarget(version), ecc, options);
+  return Boolean(result) && result.unmet === 0 && decodeMatrix(result.matrix) === options.text;
+}
+function fittingVersion(options, ecc, minimum, from) {
+  const last = Math.min(40, minimum + PIXEL_SEARCH_SPAN);
   for (let v = from + 1; v <= last; v++) {
-    const result = solvePixel(text, v, stampedTarget(v));
-    if (result && result.unmet === 0) return v;
+    if (pixelWorks(options, v, ecc)) return v;
   }
   return null;
+}
+// The smallest version, and in it the lowest level, where every letter module comes out
+// right and the code still scans.
+function pixelPlan(options, minimum) {
+  const key = [options.text, stampField.value, stampScale.value, stampHalo.checked, options.ecc, options.version, options.mask, options.padding, options.eci].join("|");
+  if (!pixelPlans.has(key)) {
+    const pairs = versionLevelPairs(options.text, options, PIXEL_SEARCH_SPAN, minimum);
+    if (pairs.length === 0) throw new Error("Pixel version too small");
+    const found = pairs.find((pair) => pixelWorks(options, pair.version, pair.ecc));
+    pixelPlans.set(key, found ?? fallbackPair(pairs, options.ecc));
+  }
+  return pixelPlans.get(key);
 }
 async function update() {
   const id = ++renderId;
@@ -115,7 +144,13 @@ async function update() {
   $("mode-hint").textContent = HINTS[options.mode];
   $("art-dot-out").textContent = `${Math.round(Number(artDot.value) * 100)}%`;
   $("art-zoom-out").textContent = `${Math.round(Number(artZoom.value) * 100)}%`;
-  preview.toggleAttribute("data-draggable", options.mode === "art" && Boolean(options.art));
+  syncAdvanced(options);
+  $("learn-options").hidden = !learn.checked;
+  $("learn-breakdown").hidden = !learn.checked;
+  $("learn-legend").hidden = !learn.checked;
+  $("learn-inspector").hidden = !learn.checked;
+  setLearnActive(learn.checked);
+  preview.toggleAttribute("data-draggable", options.mode === "art" && Boolean(options.art) && !learn.checked);
   if (!options.text) {
     show(null, "Type something to encode.");
     return;
@@ -125,42 +160,39 @@ async function update() {
   let warning = "";
   try {
     if (options.mode === "pixel") {
-      let version = syncPixelVersions(options.text);
-      if (version === null) {
+      const minimum = pixelMinimum(options);
+      if (minimum === null) {
         const box = pixelTextBox(stampField.value, Number(stampScale.value), stampHalo.checked);
         throw new Error(textFitsVersion(box, 40) ? "too long" : "too wide");
       }
-      if (autoPixelVersion) {
-        const smallest = fittingVersion(options.text, pixelMinV - 1);
-        if (smallest !== null) {
-          pixelVersion.value = String(smallest);
-          version = smallest;
-        }
-        autoPixelVersion = false;
-      }
-      const result2 = solvePixel(options.text, version, stampedTarget(version));
+      if (options.version && options.version < minimum) throw new Error("Pixel version too small");
+      const { version, ecc } = pixelPlan(options, minimum);
+      if (!options.version) versionSelect.options[0].textContent = `Smallest where the text fits (version ${version})`;
+      const result2 = solvePixel(options.text, version, stampedTarget(version), ecc, options);
       if (!result2) throw new Error("too long");
       rendered = renderQr(options, result2.matrix);
       extra = ` \xB7 ${result2.painted - result2.unmet} of ${result2.painted} text cells honoured`;
       if (result2.unmet > 0) {
-        const fits = fittingVersion(options.text, version);
+        const fits = fittingVersion(options, ecc, minimum, version);
         warning = fits ? `the text fits from version ${fits}` : "try a bigger version";
       }
     } else {
       if (options.mode === "logo") {
         await prepareLogoPlan(options);
-        if (id !== renderId) return;
+        showLogoSizes(options);
       }
+      if (options.mode === "art") await prepareArtPlan(options);
+      if (id !== renderId) return;
       rendered = renderQr(options);
     }
-    preview.innerHTML = rendered.svg;
+    preview.innerHTML = learn.checked ? updateLearn(options.text, rendered, options) : rendered.svg;
   } catch (error) {
-    show(null, error.message === "too wide" ? "The text does not fit in the code at this scale. Use a shorter text or a smaller scale." : "Too much text for this mode.");
+    show(null, errorMessage(error, options));
     return;
   }
   current = rendered;
   const { matrix } = rendered;
-  stats.textContent = `Version ${matrix.version} \xB7 ${matrix.size}\xD7${matrix.size} modules \xB7 level ${matrix.ecc} \xB7 ${new TextEncoder().encode(options.text).length} bytes${rendered.note ? ` \xB7 ${rendered.note}` : ""}${extra}`;
+  stats.textContent = `Version ${matrix.version} \xB7 ${matrix.size}\xD7${matrix.size} modules \xB7 level ${matrix.ecc} \xB7 mask ${matrix.mask} \xB7 ${new TextEncoder().encode(options.text).length} bytes${rendered.note ? ` \xB7 ${rendered.note}` : ""}${extra}`;
   if (warning) {
     const mark = document.createElement("span");
     mark.className = "warn";
@@ -176,6 +208,18 @@ async function update() {
   const ok = result?.data === options.text;
   badge.textContent = ok ? "Scans correctly" : "Could not be read back, try less decoration";
   badge.dataset.state = ok ? "ok" : "fail";
+}
+function showLogoSizes(options) {
+  const sizes = logoSizes(options);
+  for (const [fit, plan] of Object.entries(sizes)) {
+    document.querySelector(`#logo-fit input[value="${fit}"] + span small`).textContent = `${Math.round(plan.fraction * 100)}%`;
+  }
+}
+function errorMessage(error, options) {
+  if (error.message === "too wide") return "The text does not fit in the code at this scale. Use a shorter text or a smaller scale.";
+  if (error.message === "Pixel version too small") return `The text in the code needs at least version ${pixelMinimum(options)}. Pick a bigger version.`;
+  if (error.message === "Version too small") return `Too much text for version ${options.version} at level ${options.ecc ?? "L"}. Pick a bigger version${options.ecc ? " or a lower level" : ""}.`;
+  return "Too much text for this mode.";
 }
 function show(rendered, message) {
   current = rendered;
@@ -298,11 +342,13 @@ async function loadDefaults() {
   if (!$("logo").files?.length) logo = defaultLogo;
   if (!$("art").files?.length) art = defaultArt;
 }
-for (const id of ["stamp-text", "stamp-scale", "stamp-halo"]) {
-  $(id).addEventListener("input", () => {
-    autoPixelVersion = true;
-  });
+for (let v = 0; v <= 40; v++) {
+  const option = document.createElement("option");
+  option.value = String(v);
+  if (v > 0) option.textContent = `Version ${v} \xB7 ${v * 4 + 17}\xD7${v * 4 + 17}`;
+  versionSelect.append(option);
 }
+setupLearn();
 document.querySelectorAll("input, select, textarea").forEach((el) => {
   if (el.id === "logo" || el.id === "art") return;
   el.addEventListener("input", update);
